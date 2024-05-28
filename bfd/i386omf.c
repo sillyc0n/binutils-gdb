@@ -303,6 +303,33 @@ struct i386omf_borland_dependency {
   int date;
 };
 
+static const char * const thread_method[8] = {
+        "Segment Index + Displacement (SEGDEF)" ,
+        "Group Index + Displacement (GRPDEF)",
+        "External Index + Displacement (EXTDEF)",
+        "Frame number",
+        "Segment Index (SEGDEF)",
+        "Group Index (GRPDEF)",
+        "External Index (EXTDEF)",
+        "Frame number"
+};
+
+/* Parse an index field */
+static uint16_t get_index(const bfd_byte **pp, bfd_size_type *rlen)
+{
+    uint8_t c;
+
+    c = *(*pp)++;
+    (*rlen)--;
+
+    if (c & 0x80) {
+       (*rlen)--;
+        return ((c & 0x7f) << 8) + *(*pp)++;
+    } else {
+        return c;
+    }
+}
+
 static bfd_reloc_status_type
 i386omf_fix_wrt_frame (bfd *abfd,
 		       arelent *reloc_entry,
@@ -663,10 +690,12 @@ i386omf_read_coment (bfd *abfd, bfd_byte const *p, bfd_size_type reclen)
       case OMF_COMENT_WKEXT:
       case OMF_COMENT_LZEXT:
       case OMF_COMENT_DEFAULT_LIBRARY:
+      case OMF_COMENT_MEMORY_MODEL:
+      case OMF_COMENT_NEWEXT:
         break;
       default:
-	(*_bfd_error_handler) ("Unknown COMENT record 0x%02x:0x%02x at 0x%Zx",
-			       comment_type, comment_class, p - tdata->image);
+	(*_bfd_error_handler) ("Unknown record COMENT type: 0x%02x class: 0x%02x at 0x%04x",
+			       comment_type, comment_class, p - tdata->image -1);
 	bfd_set_error (bfd_error_wrong_format);
 	return FALSE;
     }
@@ -865,130 +894,123 @@ i386omf_read_lnames (bfd *abfd, bfd_byte const *p, bfd_size_type reclen)
 }
 
 static bfd_boolean
-i386omf_read_segdef (bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32)
-{
-  struct i386omf_obj_data *tdata = abfd->tdata.any;
-  int segdefs_seen = 0;
+i386omf_read_segdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32) {
+    struct i386omf_obj_data *tdata = abfd->tdata.any;
+    int segdefs_seen = 0;
 
-  while (reclen)
-    {
-      const unsigned int alignment_powers[] = { 0, 0, 1, 4, 8, 2, 12, -1 };
-      int alignment, combination;
-      int name_index, class_index, overlay_index;
-      struct i386omf_segment *seg;
-      struct i386omf_symbol *seg_sym;
-      char const *segment_name;
-      bfd_vma absolute_addr, seglen;
-      bfd_byte attr;
+    while (reclen) {
+        const unsigned int alignment_powers[] = {0, 0, 1, 4, 8, 2, 12, -1};
+        int alignment, combination;
+        int name_index, class_index, overlay_index;
+        struct i386omf_segment *seg;
+        struct i386omf_symbol *seg_sym;
+        char const *segment_name;
+        bfd_vma absolute_addr, seglen;
+        bfd_byte attr;
 
-      attr = *p;
+        attr = *p;
 
-      alignment = (attr & OMF_SEGDEF_ALIGNMENT_MASK) >> OMF_SEGDEF_ALIGNMENT_SHIFT;
-      combination = (attr & OMF_SEGDEF_COMBINATION_MASK) >> OMF_SEGDEF_COMBINATION_SHIFT;
+        alignment = (attr & OMF_SEGDEF_ALIGNMENT_MASK) >> OMF_SEGDEF_ALIGNMENT_SHIFT;
+        combination = (attr & OMF_SEGDEF_COMBINATION_MASK) >> OMF_SEGDEF_COMBINATION_SHIFT;
 
-      if (alignment == OMF_SEGDEF_ALIGNMENT_ABSOLUTE)
-	{
-	  /* Absolute segment; get frame number and offset. */
-	  absolute_addr = (bfd_vma) bfd_get_16 (abfd, p + 1) * 16;
-	  absolute_addr += bfd_get_8 (abfd, p + 3);
+        if (alignment == OMF_SEGDEF_ALIGNMENT_ABSOLUTE) {
+            /* Absolute segment; get frame number and offset. */
+            absolute_addr = (bfd_vma) bfd_get_16 (abfd, p + 1) * 16;
+            absolute_addr += bfd_get_8 (abfd, p + 3);
+            fprintf(stderr, "Absolute address: %lx", absolute_addr);
 
-	  if (reclen < 4)
-	    {
-	      (*_bfd_error_handler) ("SEGDEF at 0x%lx is truncated, only %u bytes remain.",
-				     p - tdata->image, reclen);
-	      bfd_set_error (bfd_error_wrong_format);
-	      return FALSE;
-	    }
-	  p += 4;
-	  reclen -= 4;
-	}
-      else
-	{
-	  p += 1;
-	  reclen--;
-	}
+            if (reclen < 4) {
+                (*_bfd_error_handler)("SEGDEF at 0x%lx is truncated, only %u bytes remain.",
+                                      p - tdata->image, reclen);
+                bfd_set_error(bfd_error_wrong_format);
+                return FALSE;
+            }
+            p += 4;
+            reclen -= 4;
+        } else {
+            p += 1;
+            reclen--;
+        }
 
-      if (!i386omf_read_offset (abfd, &seglen, &p, &reclen,
-				is32 ? I386OMF_OFFSET_SIZE_32 : I386OMF_OFFSET_SIZE_16))
-	return FALSE;
-      if (!i386omf_read_index (abfd, &name_index, &p, &reclen))
-	return FALSE;
-      if (!i386omf_read_index (abfd, &class_index, &p, &reclen))
-	return FALSE;
-      if (!i386omf_read_index (abfd, &overlay_index, &p, &reclen))
-	return FALSE;
+        if (!i386omf_read_offset(abfd, &seglen, &p, &reclen,
+                                 is32 ? I386OMF_OFFSET_SIZE_32 : I386OMF_OFFSET_SIZE_16))
+            return FALSE;
+        if (!i386omf_read_index(abfd, &name_index, &p, &reclen))
+            return FALSE;
+        if (!i386omf_read_index(abfd, &class_index, &p, &reclen))
+            return FALSE;
+        if (!i386omf_read_index(abfd, &overlay_index, &p, &reclen))
+            return FALSE;
 
-      if (alignment == OMF_SEGDEF_ALIGNMENT_UNDEFINED)
-	{
-	  (*_bfd_error_handler) ("Segment %d (%s) wants alignment = 7",
-				 name_index,
-				 strtab_lookup (tdata->lnames, name_index));
-	  bfd_set_error (bfd_error_wrong_format);
-	  return FALSE;
-	}
+        if (alignment == OMF_SEGDEF_ALIGNMENT_UNDEFINED) {
+            (*_bfd_error_handler)("Segment %d (%s) wants alignment = 7",
+                                  name_index,
+                                  strtab_lookup(tdata->lnames, name_index));
+            bfd_set_error(bfd_error_wrong_format);
+            return FALSE;
+        }
 
-      seg = bfd_alloc (abfd, sizeof (*seg));
-      if (seg == NULL)
-	return FALSE;
-      seg->combination = combination;
-      seg->name_index = name_index;
-      seg->class_index = class_index;
-      seg->overlay_index = overlay_index;
+        seg = bfd_alloc(abfd, sizeof(*seg));
+        if (seg == NULL)
+            return FALSE;
+        seg->combination = combination;
+        seg->name_index = name_index;
+        seg->class_index = class_index;
+        seg->overlay_index = overlay_index;
+        fprintf(stderr, "SEGDEF name_index: %x, class_index: %x, overlay_index: %x\n", name_index, class_index, overlay_index);
 
-      seg->pubdef = strtab_new (abfd);
-      if (seg->pubdef == NULL)
-	return FALSE;
+        seg->pubdef = strtab_new(abfd);
+        if (seg->pubdef == NULL)
+            return FALSE;
 
-      seg->relocs = strtab_new (abfd);
-      if (seg->relocs == NULL)
-	return FALSE;
+        seg->relocs = strtab_new(abfd);
+        if (seg->relocs == NULL)
+            return FALSE;
 
-      strtab_add (tdata->segdef, seg);
+        strtab_add(tdata->segdef, seg);
 
-      segment_name = i386omf_lookup_string (tdata->lnames,
-					    name_index,
-					    "UNNAMED");
-      if (segment_name == NULL)
-	{
-	  bfd_set_error (bfd_error_wrong_format);
-	  return FALSE;
-	}
+        segment_name = i386omf_lookup_string(tdata->lnames,
+                                             name_index,
+                                             "UNNAMED");
+        if (segment_name == NULL) {
+            bfd_set_error(bfd_error_wrong_format);
+            return FALSE;
+        }
 
-      seg->asect = bfd_make_section_anyway (abfd, segment_name);
-      seg_sym = (struct i386omf_symbol *) seg->asect->symbol;
-      seg_sym->name.len = strlen (segment_name);
-      seg_sym->name.data = bfd_alloc (abfd,  seg_sym->name.len + 1);
-      if (seg_sym->name.data == NULL)
-	return FALSE;
-      strcpy (seg_sym->name.data, segment_name);
-      seg_sym->type_index = 0;
-      seg_sym->seg = seg;
-      seg_sym->group = NULL;
-      seg->asect->used_by_bfd = seg;
-      seg->asect->size = seglen;
+        seg->asect = bfd_make_section_anyway(abfd, segment_name);
+        seg_sym = (struct i386omf_symbol *) seg->asect->symbol;
+        seg_sym->name.len = strlen(segment_name);
+        seg_sym->name.data = bfd_alloc(abfd, seg_sym->name.len + 1);
+        if (seg_sym->name.data == NULL)
+            return FALSE;
+        strcpy(seg_sym->name.data, segment_name);
+        seg_sym->type_index = 0;
+        seg_sym->seg = seg;
+        seg_sym->group = NULL;
+        seg->asect->used_by_bfd = seg;
+        seg->asect->size = seglen;
 
-      /* Use class name to guess if section should be SEC_CODE or SEC_DATA. */
-      if (strstr (i386omf_lookup_string (tdata->lnames, class_index, ""),
-		  "CODE"))
-	seg->asect->flags |= SEC_CODE;
-      if (strstr (i386omf_lookup_string (tdata->lnames, class_index, ""),
-		  "DATA"))
-	{
-	  if (seg->asect->flags & SEC_CODE)
-	    seg->asect->flags &= ~SEC_CODE;
-	  else
-	    seg->asect->flags |= SEC_DATA;
-	}
+        /* Use class name to guess if section should be SEC_CODE or SEC_DATA. */
+        if (strstr(i386omf_lookup_string(tdata->lnames, class_index, ""),
+                   "CODE"))
+            seg->asect->flags |= SEC_CODE;
+        if (strstr(i386omf_lookup_string(tdata->lnames, class_index, ""),
+                   "DATA")) {
+            if (seg->asect->flags & SEC_CODE)
+                seg->asect->flags &= ~SEC_CODE;
+            else
+                seg->asect->flags |= SEC_DATA;
+        }
 
-      seg->asect->alignment_power = alignment_powers[alignment];
+        seg->asect->alignment_power = alignment_powers[alignment];
 
-      segdefs_seen++;
+        segdefs_seen++;
     }
 
-  if (reclen || segdefs_seen != 1)
-    (*_bfd_error_handler) ("SEGDEF record doesn't contain exactly one segment definition");
+    if (reclen || segdefs_seen != 1)
+        (*_bfd_error_handler)("SEGDEF record doesn't contain exactly one segment definition");
 
-  return TRUE;
+    return TRUE;
 }
 
 static bfd_boolean
@@ -1071,216 +1093,218 @@ i386omf_fix_wrt_frame (bfd *abfd ATTRIBUTE_UNUSED,
 }
 
 static bfd_boolean
-i386omf_read_fixupp (bfd *abfd, bfd_byte const *p, bfd_size_type reclen)
-{
-  struct i386omf_obj_data *tdata = abfd->tdata.any;
-  bfd_byte const *q;
+i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
+    struct i386omf_obj_data *tdata = abfd->tdata.any;
+    bfd_byte const *q;
 
-  while (reclen)
-    {
-      int subrec;
+    while (reclen) {
+        int subrec;
 
-      subrec = bfd_get_8 (abfd, p);
-      if (subrec & OMF_FIXUPP_FIXUP)
-	{
-	  int location, fixdata;
-	  int frame_method, frame = 0, target_method, target = 0;
-	  bfd_size_type offset, displacement = 0;
-	  struct i386omf_relent *target_relent, *frame_relent;
-	  struct i386omf_symbol *sym, *frame_sym;
-	  reloc_howto_type *howto;
+        subrec = bfd_get_8 (abfd, p);
+        if (subrec & OMF_FIXUPP_FIXUP) {
+            (*_bfd_error_handler)(" FIXUP subrec: %02x,", subrec);
+            int location, fixdata;
+            int frame_method, frame = 0, target_method, target = 0;
+            bfd_size_type offset, displacement = 0;
+            struct i386omf_relent *target_relent, *frame_relent;
+            struct i386omf_symbol *sym, *frame_sym;
+            reloc_howto_type *howto;
 
-	  if (tdata->last_leidata == NULL)
-	    {
-	      bfd_set_error (bfd_error_wrong_format);
-	      return FALSE;
-	    }
+            if (tdata->last_leidata == NULL) {
+                bfd_set_error(bfd_error_wrong_format);
+                return FALSE;
+            }
 
-	  if (reclen < 3)
-	    {
-	      (*_bfd_error_handler) ("FIXUP subrecord truncated at 0x%lx.",
-				     p - tdata->image);
-	      bfd_set_error (bfd_error_wrong_format);
-	      return FALSE;
-	    }
+            if (reclen < 3) {
+                (*_bfd_error_handler)("FIXUP subrecord truncated at 0x%lx.",
+                                      p - tdata->image);
+                bfd_set_error(bfd_error_wrong_format);
+                return FALSE;
+            }
 
-	  /* Read then skip first 3 bytes that must always be present. */
-	  location = (subrec & OMF_FIXUP_LOCATION_MASK)
-	    >> OMF_FIXUP_LOCATION_SHIFT;
-	  offset = bfd_get_8 (abfd, p + 1) + 256 * (subrec & 3);
-	  fixdata = bfd_get_8 (abfd, p + 2);
-	  p += 3;
-	  reclen -= 3;
+            /* Read then skip first 3 bytes that must always be present. */
+            location = (subrec & OMF_FIXUP_LOCATION_MASK)
+                    >> OMF_FIXUP_LOCATION_SHIFT;
+            offset = bfd_get_8 (abfd, p + 1) + 256 * (subrec & 3);
+            fixdata = bfd_get_8 (abfd, p + 2);
+            p += 3;
+            reclen -= 3;
 
-	  if (fixdata & OMF_FIX_DATA_FRAME_THREAD)
-	    {
-	      // XXX Look it up from the FRAME thread.
-	      frame_method = 0;
-	      frame = 0;
-	    }
-	  else
-	    frame_method = (fixdata & OMF_FIX_DATA_FRAME_MASK)
-	      >> OMF_FIX_DATA_FRAME_SHIFT;
+            if (fixdata & OMF_FIX_DATA_FRAME_THREAD) {
+                /* If F = 1, the frame field contains a number between 0 and 3 that indicates the
+                * thread field containing the FRAME method. */
+                frame_method = (fixdata & OMF_FIX_DATA_FRAME_MASK) >> OMF_FIX_DATA_FRAME_SHIFT;
+                /* FRAME for this fixup is specified by a reference to a previous thread field. */
+                /*frame = 0;*/
+            } else {
+                /* If F = 0, the frame field contains 0,1, 2, 4, or 5,
+                * corresponding to one of the methods of specifying a FRAME listed in Table 19-2. */
+                frame_method = (fixdata & OMF_FIX_DATA_FRAME_MASK) >> OMF_FIX_DATA_FRAME_SHIFT;
 
-	  switch (frame_method)
-	    {
-	      struct i386omf_segment *segdef;
-	      struct i386omf_group *grp;
+                switch (frame_method) {
+                    struct i386omf_segment *segdef;
+                    struct i386omf_group *grp;
 
-	      case OMF_FIXUPP_FRAME_SEGDEF:
-		if (!(fixdata & OMF_FIX_DATA_FRAME_THREAD)
-		    && !i386omf_read_index (abfd, &frame, &p, &reclen))
-		  return FALSE;
-		segdef = strtab_lookup (tdata->segdef, frame);
-		frame_sym = (struct i386omf_symbol *) segdef->asect->symbol;
-		break;
-	      case OMF_FIXUPP_FRAME_GRPDEF:
-		if (!(fixdata & OMF_FIX_DATA_FRAME_THREAD)
-		    && !i386omf_read_index (abfd, &frame, &p, &reclen))
-		  return FALSE;
-		grp = strtab_lookup (tdata->grpdef, frame);
-		frame_sym = grp->symbol;
-		break;
-	      case OMF_FIXUPP_FRAME_EXTDEF:
-		if (!(fixdata & OMF_FIX_DATA_FRAME_THREAD)
-		    && !i386omf_read_index (abfd, &frame, &p, &reclen))
-		  return FALSE;
-		frame_sym = strtab_lookup (tdata->externs, frame);
-		break;
-	      case OMF_FIXUPP_FRAME_EXPLICIT:
-		frame = (int) bfd_get_16 (abfd, p);
-		p += 2;
-		reclen -= 2;
-		frame_sym = NULL; /* TODO: Make an absolute symbol. */
-		break;
-	      case OMF_FIXUPP_FRAME_LEIDATA:
-		frame_sym = (struct i386omf_symbol *) tdata->last_leidata->asect->symbol;
-		break;
-	      case OMF_FIXUPP_FRAME_TARGET:
-		frame_sym = NULL;
-		break;
-	      default:
-		bfd_set_error (bfd_error_wrong_format);
-		return FALSE;
-	    }
+                    case OMF_FIXUPP_FRAME_SEGDEF:
+                        if (!(fixdata & OMF_FIX_DATA_FRAME_THREAD)
+                            && !i386omf_read_index(abfd, &frame, &p, &reclen))
+                            return FALSE;
+                        segdef = strtab_lookup(tdata->segdef, frame);
+                        frame_sym = (struct i386omf_symbol *) segdef->asect->symbol;
+                        break;
+                    case OMF_FIXUPP_FRAME_GRPDEF:
+                        if (!(fixdata & OMF_FIX_DATA_FRAME_THREAD)
+                            && !i386omf_read_index(abfd, &frame, &p, &reclen))
+                            return FALSE;
+                        grp = strtab_lookup(tdata->grpdef, frame);
+                        frame_sym = grp->symbol;
+                        break;
+                    case OMF_FIXUPP_FRAME_EXTDEF:
+                        if (!(fixdata & OMF_FIX_DATA_FRAME_THREAD)
+                            && !i386omf_read_index(abfd, &frame, &p, &reclen))
+                            return FALSE;
+                        frame_sym = strtab_lookup(tdata->externs, frame);
+                        break;
+                    case OMF_FIXUPP_FRAME_EXPLICIT:
+                        frame = (int) bfd_get_16(abfd, p);
+                        p += 2;
+                        reclen -= 2;
+                        frame_sym = NULL; /* TODO: Make an absolute symbol. */
+                        break;
+                    case OMF_FIXUPP_FRAME_LEIDATA:
+                        frame_sym = (struct i386omf_symbol *) tdata->last_leidata->asect->symbol;
+                        break;
+                    case OMF_FIXUPP_FRAME_TARGET:
+                        frame_sym = NULL;
+                        break;
+                    default:
+                        bfd_set_error(bfd_error_wrong_format);
+                        return FALSE;
+                }
 
-	  if (fixdata & OMF_FIX_DATA_TARGET_THREAD)
-	    {
-	      // XXX Look it up from the TARGET thread.
-	      target_method = 0;
-	      target = 0;
-	    }
-	  else
-	    target_method = fixdata & OMF_FIX_DATA_TARGET_METHOD_MASK;
+                if (fixdata & OMF_FIX_DATA_TARGET_THREAD) {
+                    // XXX Look it up from the TARGET thread.
+                    target_method = 0;
+                    target = 0;
+                } else
+                    target_method = fixdata & OMF_FIX_DATA_TARGET_METHOD_MASK;
 
-	  target_relent = bfd_alloc (abfd, sizeof (*target_relent));
-	  if (target_relent == NULL)
-	    return FALSE;
+                target_relent = bfd_alloc(abfd, sizeof(*target_relent));
+                if (target_relent == NULL)
+                    return FALSE;
 
-	  q = p;
-	  switch (target_method)
-	    {
-	      struct i386omf_segment *segdef;
-	      struct i386omf_group *grpdef;
+                q = p;
+                switch (target_method) {
+                    struct i386omf_segment *segdef;
+                    struct i386omf_group *grpdef;
 
-	      case OMF_FIXUPP_TARGET_SEGDEF:
-	      case OMF_FIXUPP_TARGET_NODISP | OMF_FIXUPP_TARGET_SEGDEF:
-		if (!i386omf_read_index (abfd, &target, &p, &reclen))
-		  return FALSE;
-		segdef = strtab_lookup (tdata->segdef, target);
-		if (segdef == NULL)
-		  {
-		    (*_bfd_error_handler) ("FIXUP at 0x%zx wants phantom segment [%d]",
-					   q - tdata->image, target);
-		    bfd_set_error (bfd_error_wrong_format);
-		    return FALSE;
-		  }
-		target_relent->symbol = segdef->asect->symbol;
-		break;
-	      case OMF_FIXUPP_TARGET_GRPDEF:
-	      case OMF_FIXUPP_TARGET_NODISP | OMF_FIXUPP_TARGET_GRPDEF:
-		if (!i386omf_read_index (abfd, &target, &p, &reclen))
-		  return FALSE;
-		grpdef = strtab_lookup (tdata->grpdef, target);
-		if (grpdef == NULL)
-		  {
-		    (*_bfd_error_handler) ("FIXUP at 0x%zx wants phantom group [%d]",
-					   q - tdata->image, target);
-		    bfd_set_error (bfd_error_wrong_format);
-		    return FALSE;
-		  }
-		target_relent->symbol = NULL;
-		break;
-	      case OMF_FIXUPP_TARGET_EXTDEF:
-	      case OMF_FIXUPP_TARGET_NODISP | OMF_FIXUPP_TARGET_EXTDEF:
-		if (!i386omf_read_index (abfd, &target, &p, &reclen))
-		  return FALSE;
-		sym = strtab_lookup (tdata->externs, target);
-		if (sym == NULL)
-		  {
-		    (*_bfd_error_handler) ("FIXUP at 0x%zx wants phantom extern [%d]",
-					   q - tdata->image, target);
-		    bfd_set_error (bfd_error_wrong_format);
-		    return FALSE;
-		  }
-		target_relent->symbol = &sym->base;
-		break;
-	      case OMF_FIXUPP_TARGET_EXPLICIT:
-	      case OMF_FIXUPP_TARGET_NODISP | OMF_FIXUPP_TARGET_EXPLICIT:
-		target = (int) bfd_get_16 (abfd, p);
-		p += 2;
-		reclen -= 2;
-		target_relent->symbol = NULL;
-		break;
-	    }
+                    case OMF_FIXUPP_TARGET_SEGDEF:
+                    case OMF_FIXUPP_TARGET_NODISP | OMF_FIXUPP_TARGET_SEGDEF:
+                        if (!i386omf_read_index(abfd, &target, &p, &reclen))
+                            return FALSE;
+                        segdef = strtab_lookup(tdata->segdef, target);
+                        if (segdef == NULL) {
+                            (*_bfd_error_handler)("FIXUP at 0x%zx wants phantom segment [%d]",
+                                                  q - tdata->image, target);
+                            bfd_set_error(bfd_error_wrong_format);
+                            return FALSE;
+                        }
+                        target_relent->symbol = segdef->asect->symbol;
+                        break;
+                    case OMF_FIXUPP_TARGET_GRPDEF:
+                    case OMF_FIXUPP_TARGET_NODISP | OMF_FIXUPP_TARGET_GRPDEF:
+                        if (!i386omf_read_index(abfd, &target, &p, &reclen))
+                            return FALSE;
+                        grpdef = strtab_lookup(tdata->grpdef, target);
+                        if (grpdef == NULL) {
+                            (*_bfd_error_handler)("FIXUP at 0x%zx wants phantom group [%d]",
+                                                  q - tdata->image, target);
+                            bfd_set_error(bfd_error_wrong_format);
+                            return FALSE;
+                        }
+                        target_relent->symbol = NULL;
+                        break;
+                    case OMF_FIXUPP_TARGET_EXTDEF:
+                    case OMF_FIXUPP_TARGET_NODISP | OMF_FIXUPP_TARGET_EXTDEF:
+                        if (!i386omf_read_index(abfd, &target, &p, &reclen))
+                            return FALSE;
+                        sym = strtab_lookup(tdata->externs, target);
+                        if (sym == NULL) {
+                            (*_bfd_error_handler)("FIXUP at 0x%zx wants phantom extern [%d]",
+                                                  q - tdata->image, target);
+                            bfd_set_error(bfd_error_wrong_format);
+                            return FALSE;
+                        }
+                        target_relent->symbol = &sym->base;
+                        break;
+                    case OMF_FIXUPP_TARGET_EXPLICIT:
+                    case OMF_FIXUPP_TARGET_NODISP | OMF_FIXUPP_TARGET_EXPLICIT:
+                        target = (int) bfd_get_16(abfd, p);
+                        p += 2;
+                        reclen -= 2;
+                        target_relent->symbol = NULL;
+                        break;
+                }
 
-	  if (!(target_method & OMF_FIXUPP_TARGET_NODISP))
-	    if (!i386omf_read_offset (abfd, &displacement, &p, &reclen,
-				      I386OMF_OFFSET_SIZE_16))
-	      return FALSE;
+                if (!(target_method & OMF_FIXUPP_TARGET_NODISP))
+                    if (!i386omf_read_offset(abfd, &displacement, &p, &reclen,
+                                             I386OMF_OFFSET_SIZE_16))
+                        return FALSE;
 
-	  target_relent->base.sym_ptr_ptr = &target_relent->symbol;
-	  target_relent->base.address = offset;
-	  howto = &(subrec & OMF_FIXUP_SEGREL
-		    ? howto_table_i386omf_segrel
-		    : howto_table_i386omf_pcrel)[location];
-	  target_relent->base.addend
-	      = displacement + (subrec & OMF_FIXUP_SEGREL
-				? 0
-				: -bfd_get_reloc_size (howto));
-	  target_relent->base.howto = howto;
+                target_relent->base.sym_ptr_ptr = &target_relent->symbol;
+                target_relent->base.address = offset;
+                howto = &(subrec & OMF_FIXUP_SEGREL
+                          ? howto_table_i386omf_segrel
+                          : howto_table_i386omf_pcrel)[location];
+                target_relent->base.addend
+                        = displacement + (subrec & OMF_FIXUP_SEGREL
+                                          ? 0
+                                          : -bfd_get_reloc_size(howto));
+                target_relent->base.howto = howto;
 
-	  strtab_add (tdata->last_leidata->relocs, target_relent);
+                strtab_add(tdata->last_leidata->relocs, target_relent);
 
-	  switch (frame_method)
-	    {
-	      case OMF_FIXUPP_FRAME_TARGET:
-		break;
-	      default:
-		frame_relent = bfd_alloc (abfd, sizeof (*frame_relent));
-		if (frame_relent == NULL)
-		  return FALSE;
-		frame_relent->symbol = &frame_sym->base;
-		frame_relent->base.sym_ptr_ptr = &frame_relent->symbol;
-		frame_relent->base.address = offset;
-		frame_relent->base.addend = 0;
-		frame_relent->base.howto = &howto_wrt_segdef;
-		strtab_add (tdata->last_leidata->relocs, frame_relent);
-		break;
-	    }
+                switch (frame_method) {
+                    case OMF_FIXUPP_FRAME_TARGET:
+                        break;
+                    default:
+                        frame_relent = bfd_alloc(abfd, sizeof(*frame_relent));
+                        if (frame_relent == NULL)
+                            return FALSE;
+                        frame_relent->symbol = &frame_sym->base;
+                        frame_relent->base.sym_ptr_ptr = &frame_relent->symbol;
+                        frame_relent->base.address = offset;
+                        frame_relent->base.addend = 0;
+                        frame_relent->base.howto = &howto_wrt_segdef;
+                        strtab_add(tdata->last_leidata->relocs, frame_relent);
+                        break;
+                }
 
-	  abfd->flags |= HAS_SYMS;
-	  tdata->last_leidata->asect->flags |= SEC_RELOC;
-	}
-      else
-	{
-	  (*_bfd_error_handler) ("THREAD subrecords not yet supported");
-	  p++;
-	  reclen--;
-	}
+                abfd->flags |= HAS_SYMS;
+                tdata->last_leidata->asect->flags |= SEC_RELOC;
+            }
+        } else {
+            uint8_t op = *p++;
+            reclen--;
+
+            (*_bfd_error_handler)(" THREAD subrec: %02x,"
+                                  " D(%x): %s,"
+                                  " data: %x,"
+                                  " method: %s,"
+                                  " thread number: %d,"
+                                  " index: %d",
+                   op,
+                   (op & 0x40) >> 6,
+                   ((op & 0x40) >> 6) ? "FRAME" : "TARGET",                 // D b6
+                   (op & 0x20),                        // b5 (always 0)
+                   thread_method[((op & 0x1c) >> 2)],                 // method b4,b3,b2
+                   op & 3,                             // thread number b1,b0
+                   get_index(&p, &reclen)    // index
+                   );
+        }
     }
 
-  return TRUE;
+    return TRUE;
 }
 
 static bfd_size_type
@@ -1625,7 +1649,7 @@ i386omf_readobject (bfd *abfd, bfd_size_type osize, unsigned long *machine)
 
       rectype = bfd_get_8 (abfd, p);
       reclen = bfd_get_16 (abfd, p + 1);
-
+        fprintf(stderr, "rectype, reclen: 0x%2x, %lu\n", rectype, reclen);
 	  if (rectype & 1 && machine) {
 		*machine = bfd_mach_i386_i386;
 	  }
