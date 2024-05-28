@@ -314,22 +314,6 @@ static const char * const thread_method[8] = {
         "Frame number"
 };
 
-/* Parse an index field */
-static uint16_t get_index(const bfd_byte **pp, bfd_size_type *rlen)
-{
-    uint8_t c;
-
-    c = *(*pp)++;
-    (*rlen)--;
-
-    if (c & 0x80) {
-       (*rlen)--;
-        return ((c & 0x7f) << 8) + *(*pp)++;
-    } else {
-        return c;
-    }
-}
-
 static bfd_reloc_status_type
 i386omf_fix_wrt_frame (bfd *abfd,
 		       arelent *reloc_entry,
@@ -1102,7 +1086,6 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
 
         subrec = bfd_get_8 (abfd, p);
         if (subrec & OMF_FIXUPP_FIXUP) {
-            (*_bfd_error_handler)(" FIXUP subrec: %02x,", subrec);
             int location, fixdata;
             int frame_method, frame = 0, target_method, target = 0;
             bfd_size_type offset, displacement = 0;
@@ -1129,7 +1112,7 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
             fixdata = bfd_get_8 (abfd, p + 2);
             p += 3;
             reclen -= 3;
-
+            (*_bfd_error_handler)(" FIXUP subrec: %02x, M: %0x, location: %02x, offset: %02x, fixdata: %02x", subrec, (subrec&OMF_FIXUP_SEGREL)>>6, location, offset, fixdata);
             if (fixdata & OMF_FIX_DATA_FRAME_THREAD) {
                 /* If F = 1, the frame field contains a number between 0 and 3 that indicates the
                 * thread field containing the FRAME method. */
@@ -1284,8 +1267,12 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
                 tdata->last_leidata->asect->flags |= SEC_RELOC;
             }
         } else {
-            uint8_t op = *p++;
+            int threaddata, frame;
+
+            threaddata = bfd_get_8 (abfd, p++);
             reclen--;
+
+            i386omf_read_index(abfd, &frame, &p, &reclen);
 
             (*_bfd_error_handler)(" THREAD subrec: %02x,"
                                   " D(%x): %s,"
@@ -1293,13 +1280,13 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
                                   " method: %s,"
                                   " thread number: %d,"
                                   " index: %d",
-                   op,
-                   (op & 0x40) >> 6,
-                   ((op & 0x40) >> 6) ? "FRAME" : "TARGET",                 // D b6
-                   (op & 0x20),                        // b5 (always 0)
-                   thread_method[((op & 0x1c) >> 2)],                 // method b4,b3,b2
-                   op & 3,                             // thread number b1,b0
-                   get_index(&p, &reclen)    // index
+                   threaddata,
+                   (threaddata & 0x40) >> 6,
+                   ((threaddata & 0x40) >> 6) ? "FRAME" : "TARGET",         // D b6
+                   (threaddata & 0x20),                                     // b5 (always 0)
+                   thread_method[((threaddata & 0x1c) >> 2)],               // method b4,b3,b2
+                   threaddata & 3,                                          // thread number b1,b0
+                   frame                                            // index
                    );
         }
     }
