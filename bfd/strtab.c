@@ -7,14 +7,19 @@
 #define STRTAB_INIT_SIZE 256
 
 struct strtab {
-  bfd *owner;
-  void **strings;
-  int strings_used;
-  int strings_size;
+  bfd *owner;         // owning bfd structure.
+  void **strings;     // A dynamically allocated array of pointers to strings.
+  int strings_used;   // The number of strings currently stored in the table.
+  int strings_size;   // The total capacity of the strings array.
 };
 
-struct strtab *
-strtab_new(bfd *abfd)
+/**
+ * @brief Initialization - Allocates and initializes a new strtab instance. 
+ * 
+ * It allocates memory for the strtab structure itself and for the initial size of the strings array. 
+ * If either allocation fails, it cleans up and returns
+ */
+struct strtab * strtab_new(bfd *abfd)
 {
   struct strtab *st;
 
@@ -34,18 +39,37 @@ strtab_new(bfd *abfd)
   return st;
 }
 
-void
-strtab_free (struct strtab *st ATTRIBUTE_UNUSED)
+/**
+ * @brief Cleanup - Frees the memory allocated for the strings array and the strtab structure itself.
+ * 
+ * @param ATTRIBUTE_UNUSED 
+ */
+void strtab_free (struct strtab *st ATTRIBUTE_UNUSED)
 {
   free (st->strings);
   free (st);
 }
 
+/**
+ * @brief Size Query - Returns the number of strings currently stored in the table.
+ * 
+ * @param st 
+ * @return int 
+ */
 int strtab_size(struct strtab const *st)
 {
   return (st->strings_used);
 }
 
+/**
+ * @brief String Addition - Adds a new string to the table. 
+ * If the current capacity is exceeded, it reallocates the strings array to double its size. 
+ * Then, it adds the new string and increments the usage count.
+ * 
+ * @param st 
+ * @param s 
+ * @return int 
+ */
 int strtab_add(struct strtab *st, void *s)
 {
   if (st->strings_used >= st->strings_size)
@@ -70,8 +94,14 @@ int strtab_add(struct strtab *st, void *s)
   return (st->strings_used - 1);
 }
 
-void *
-strtab_lookup(struct strtab *st, int i)
+/**
+ * @brief Lookup - Retrieves the string at index i. If i is out of bounds, it returns NULL.
+ * 
+ * @param st 
+ * @param i 
+ * @return void* 
+ */
+void * strtab_lookup(struct strtab *st, int i)
 {
   if (i >= st->strings_used)
     return NULL;
