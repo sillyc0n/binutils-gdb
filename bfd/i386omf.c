@@ -317,28 +317,6 @@ struct i386omf_borland_dependency {
   int date;
 };
 
-enum fixup_thread_frame_method
-  {
-    FIXUP_THREAD_FRAME_SEG_INDEX,
-    FIXUP_THREAD_FRAME_GRP_INDEX,
-    FIXUP_THREAD_FRAME_EXT_INDEX,
-    FIXUP_THREAD_FRAME_EXP_FRAME_NUMBER,
-    FIXUP_THREAD_FRAME_SEG_LOCATION,
-    FIXUP_THREAD_FRAME_TARGETS_INDEX,
-  };
-
-enum fixup_thread_target_method
-  {
-    FIXUP_THREAD_TARGET_SEG_INDEX_DISPLACEMENT,
-    FIXUP_THREAD_TARGET_GRP_INDEX_DISPLACEMENT,
-    FIXUP_THREAD_TARGET_EXT_INDEX_DISPLACEMENT,
-    FIXUP_THREAD_TARGET_EXP_FRAME_NUMBER,
-    FIXUP_THREAD_TARGET_SEG_INDEX_NO_DISPLACEMENT,
-    FIXUP_THREAD_TARGET_GRP_INDEX_NO_DISPLACEMENT,
-    FIXUP_THREAD_TARGET_EXT_INDEX_NO_DISPLACEMENT,
-    FIXUP_THREAD_TARGET_EXP_FRAME_NUMBER_NO_DISPLACEMENT,
-  };
-
 static const char * const thread_method[8] = {
         "Segment Index + Displacement (SEGDEF)" ,
         "Group Index + Displacement (GRPDEF)",
@@ -1159,41 +1137,25 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
             (*_bfd_error_handler)(" FIXUP subrec: %02x, M: %0x, location: %02x, offset: %02x, fixdata: %02x", subrec, (subrec&OMF_FIXUP_SEGREL)>>6, location, offset, fixdata);
             if (fixdata & OMF_FIX_DATA_FRAME_THREAD) {
                 /* FRAME for this fixup is specified by a reference to a previous thread field. */
-                struct i386_fixup_thread *frame_fixup, *target_fixup;
-                frame_method = (fixdata & OMF_FIX_DATA_FRAME_MASK) >> OMF_FIX_DATA_FRAME_SHIFT;
+                struct i386_fixup_thread *frame_thread;
 
                 (*_bfd_error_handler)("  F_bit: %x, frame_method: %0x, T_bit: %x, P_bit: %x, targt: %x",
                                       (fixdata & 0x80) >> 0x7,              /* if F_bit=1. There is no frame datum field in the subrecord.*/
-                                      frame_method,
+                                      (fixdata & OMF_FIX_DATA_FRAME_MASK) >> OMF_FIX_DATA_FRAME_SHIFT,
                                       (fixdata&0x8) >> 0x3,
                                       (fixdata&0x4) >> 0x2,
                                       fixdata&0x3);
                 /* frame = 0;*/
 
                 /* the frame field contains a number between 0 and 3 that indicates the thread field containing the FRAME method. */
-                frame_fixup = strtab_lookup(tdata->fixup_threads,(fixdata & OMF_FIX_DATA_FRAME_MASK) >> OMF_FIX_DATA_FRAME_SHIFT);
+                frame_thread = strtab_lookup(tdata->fixup_threads,(fixdata & OMF_FIX_DATA_FRAME_MASK) >> OMF_FIX_DATA_FRAME_SHIFT);
                 (*_bfd_error_handler)("  fixup FRAME thread_number: %x, method: %d, is_frame: %d, index: %x",
-                                      frame_fixup->thread_number,
-                                      frame_fixup->method,
-                                      frame_fixup->is_frame,
-                                      frame_fixup->index);
-
-                /*  If the T bit indicates that the TARGET is specified by a previous thread reference
-                    (T = 1), the targt field contains a number between 0 and 3 that refers to a previous
-                    thread field containing the TARGET method. In this case, the P bit, combined with the 2
-                    low-order bits of the method field in the thread field, determines the TARGET thread. */
-
-                if (fixdata & OMF_FIX_DATA_TARGET_THREAD) {
-                    target_fixup = strtab_lookup(tdata->fixup_threads,fixdata & (OMF_FIX_DATA_P_MASK + OMF_FIX_DATA_TARGT_MASK));
-
-                    (*_bfd_error_handler)("  fixup TARGET thread_number: %x, method: %d, is_frame: %d, index: %x",
-                                          target_fixup->thread_number,
-                                          target_fixup->method,
-                                          target_fixup->is_frame,
-                                          target_fixup->index);
-                }
-
-                continue;
+                                      frame_thread->thread_number,
+                                      frame_thread->method,
+                                      frame_thread->is_frame,
+                                      frame_thread->index);
+                frame_method = frame_thread->method;
+                frame = frame_thread->index;
             } else {
                 /* FRAME method is explicitly defined in this fixup field. */
                 /* frame field contains 0,1, 2, 4, or 5, corresponding to one of the methods of specifying a FRAME listed in Table 19-2. */
@@ -1248,9 +1210,24 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
             }
 
             if (fixdata & OMF_FIX_DATA_TARGET_THREAD) {
+                struct i386_fixup_thread *target_thread;
                 // XXX Look it up from the TARGET thread.
-                target_method = 0;
-                target = 0;
+                // target_method = 0;
+                // target = 0;
+
+                /*  If the T bit indicates that the TARGET is specified by a previous thread reference
+                   (T = 1), the targt field contains a number between 0 and 3 that refers to a previous
+                   thread field containing the TARGET method. In this case, the P bit, combined with the 2
+                   low-order bits of the method field in the thread field, determines the TARGET thread. */
+                target_thread = strtab_lookup(tdata->fixup_threads,fixdata & (OMF_FIX_DATA_P_MASK + OMF_FIX_DATA_TARGT_MASK));
+
+                (*_bfd_error_handler)("  fixup TARGET thread_number: %x, method: %d, is_frame: %d, index: %x",
+                                      target_thread->thread_number,
+                                      target_thread->method,
+                                      target_thread->is_frame,
+                                      target_thread->index);
+                target_method = target_thread->method;
+                target = target_thread->index;
             } else
                 target_method = fixdata & OMF_FIX_DATA_TARGET_METHOD_MASK;
 
@@ -1265,7 +1242,7 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
 
                 case OMF_FIXUPP_TARGET_SEGDEF:
                 case OMF_FIXUPP_TARGET_NODISP | OMF_FIXUPP_TARGET_SEGDEF:
-                    if (!i386omf_read_index(abfd, &target, &p, &reclen))
+                    if (!(fixdata & OMF_FIX_DATA_TARGET_THREAD) && !i386omf_read_index(abfd, &target, &p, &reclen))
                         return FALSE;
                     segdef = strtab_lookup(tdata->segdef, target);
                     if (segdef == NULL) {
