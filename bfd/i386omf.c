@@ -1255,7 +1255,7 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
                     break;
                 case OMF_FIXUPP_TARGET_GRPDEF:
                 case OMF_FIXUPP_TARGET_NODISP | OMF_FIXUPP_TARGET_GRPDEF:
-                    if (!i386omf_read_index(abfd, &target, &p, &reclen))
+                    if (!(fixdata & OMF_FIX_DATA_TARGET_THREAD) && !i386omf_read_index(abfd, &target, &p, &reclen))
                         return FALSE;
                     grpdef = strtab_lookup(tdata->grpdef, target);
                     if (grpdef == NULL) {
@@ -1268,7 +1268,7 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
                     break;
                 case OMF_FIXUPP_TARGET_EXTDEF:
                 case OMF_FIXUPP_TARGET_NODISP | OMF_FIXUPP_TARGET_EXTDEF:
-                    if (!i386omf_read_index(abfd, &target, &p, &reclen))
+                    if (!(fixdata & OMF_FIX_DATA_TARGET_THREAD) && !i386omf_read_index(abfd, &target, &p, &reclen))
                         return FALSE;
                     sym = strtab_lookup(tdata->externs, target);
                     if (sym == NULL) {
