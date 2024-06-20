@@ -73,3 +73,13 @@ stamp-*
 /gmp*
 /isl*
 /gettext*
+
+.DS_Store
+.idea/
+.vscode
+build
+*.dSYM
+Makefile
+*.lt
+*.py
+*.ver

@@ -82,7 +82,7 @@ extern "C" {
 #ifdef POISON_BFD_BOOLEAN
 # pragma GCC poison bfd_boolean
 #else
-# define bfd_boolean bool
+#
 # undef FALSE
 # undef TRUE
 # define FALSE 0

@@ -7562,6 +7562,7 @@ enum bfd_flavour
   bfd_target_ihex_flavour,
   bfd_target_som_flavour,
   bfd_target_msdos_flavour,
+  bfd_target_omf_flavour,
   bfd_target_evax_flavour,
   bfd_target_mmo_flavour,
   bfd_target_mach_o_flavour,
