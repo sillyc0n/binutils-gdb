@@ -267,11 +267,10 @@ struct i386omf_symbol {
 };
 
 struct i386omf_obj_data {
-    bfd_window window;
-    bfd_byte *image;
-    char *translator;
-    struct counted_string module_name;
-    bool is_main_module;
+  bfd_byte *image;
+  char *translator;
+  struct counted_string module_name;
+  bool is_main_module;
     bool has_start_address;
     struct strtab *lnames;
     struct strtab *segdef;
@@ -1698,31 +1697,36 @@ i386omf_teardown_tdata(bfd *abfd) {
     for (i = 0; strtabs[i] != NULL; i++) {
         strtab_free(*strtabs[i]);
     }
-#ifdef USE_MMAP
-    bfd_free_window (&tdata->window);
-#else
-    free(&tdata->window);
-#endif
+
+  if (tdata->image)
+  {
+    free (tdata->image);
+    tdata->image = NULL;
+  }
 }
 
 static bool
-i386omf_readobject(bfd *abfd, bfd_size_type osize, unsigned long *machine) {
-    struct i386omf_obj_data *tdata = abfd->tdata.any;
-    bfd_byte const *p;
-#ifdef USE_MMAP
-    bfd_init_window (&tdata->window);
-    if (!bfd_get_file_window (abfd, 0, osize, &tdata->window, false))
-      return false;
-#else
-    // TODO
-    abort();
-#endif
-    tdata->image = tdata->window.data;
-    strtab_add(tdata->lnames, NULL);
-    strtab_add(tdata->segdef, NULL);
-    strtab_add(tdata->grpdef, NULL);
-    strtab_add(tdata->externs, NULL);
-    strtab_add(tdata->fixup_threads, NULL);
+i386omf_readobject (bfd *abfd, bfd_size_type osize, unsigned long *machine)
+{
+  struct i386omf_obj_data *tdata = abfd->tdata.any;
+  bfd_byte const *p;
+
+  if (bfd_seek (abfd, 0, SEEK_SET) != 0)
+    return false;
+
+  tdata->image = _bfd_malloc_and_read (abfd, osize, osize);
+
+  if (tdata->image == NULL)
+  {
+    bfd_set_error (bfd_error_system_call);
+    return false;
+  }
+
+  strtab_add (tdata->lnames, NULL);
+  strtab_add (tdata->segdef, NULL);
+  strtab_add (tdata->grpdef, NULL);
+  strtab_add (tdata->externs, NULL);
+  strtab_add (tdata->fixup_threads, NULL);
 
     /* A quick cheap check for the right file format. */
     if (!osize || bfd_get_8(abfd, tdata->image) != OMF_RECORD_THEADR) {
@@ -1779,10 +1783,12 @@ i386omf_readobject(bfd *abfd, bfd_size_type osize, unsigned long *machine) {
     return true;
 }
 
-static bfd_cleanup i386omf_object_p(bfd *abfd) {
-    // struct bfd_preserve preserve;
-    struct stat statbuf;
-    unsigned long machine = bfd_mach_i386_i8086;;
+static bfd_cleanup
+i386omf_object_p (bfd *abfd)
+{
+  // struct bfd_preserve preserve;
+  struct stat statbuf;
+  unsigned long machine = bfd_mach_i386_i8086;;
 
     abfd->symcount = 0;
 
@@ -2134,6 +2140,12 @@ binary_set_section_contents(bfd *abfd,
     return _bfd_generic_set_section_contents(abfd, sec, data, offset, size);
 }
 
+static bool
+i386omf_write_object_contents (bfd *abfd)
+{
+  return false;
+}
+
 /* No space is required for header information.  */
 
 static int
@@ -2171,54 +2183,54 @@ binary_sizeof_headers(bfd *abfd ATTRIBUTE_UNUSED,
 #define binary_bfd_link_check_relocs              _bfd_generic_link_check_relocs
 
 const bfd_target i386_omf_vec =
-        {
-                "i386omf",            /* name */
-                bfd_target_omf_flavour,    /* flavour */
-                BFD_ENDIAN_LITTLE,        /* byteorder */
-                BFD_ENDIAN_LITTLE,        /* header_byteorder */
-                (HAS_RELOC | HAS_SYMS | HAS_LOCALS), /* object_flags */
-                (SEC_ALLOC | SEC_LOAD | SEC_LOAD | SEC_RELOC | SEC_READONLY
-                 | SEC_CODE | SEC_DATA | SEC_ROM | SEC_HAS_CONTENTS
-                 | SEC_IN_MEMORY | SEC_GROUP), /* section_flags */
-                0,                /* symbol_leading_char */
-                ' ',                /* ar_pad_char */
-                16,                /* ar_max_namelen */
-                255,                /* match priority.  */
-                TARGET_KEEP_UNUSED_SECTION_SYMBOLS, /* keep unused section symbols.  */
-                bfd_getl64, bfd_getl_signed_64, bfd_putl64,
-                bfd_getl32, bfd_getl_signed_32, bfd_putl32,
-                bfd_getl16, bfd_getl_signed_16, bfd_putl16,    /* data */
-                bfd_getl64, bfd_getl_signed_64, bfd_putl64,
-                bfd_getl32, bfd_getl_signed_32, bfd_putl32,
-                bfd_getl16, bfd_getl_signed_16, bfd_putl16,    /* hdrs */
-                {                /* bfd_check_format */
-                        _bfd_dummy_target,
-                        i386omf_object_p,
-                        _bfd_dummy_target,
-                        _bfd_dummy_target,
-                },
-                {                /* bfd_set_format */
-                        _bfd_bool_bfd_false_error,
-                        binary_mkobject,
-                        _bfd_generic_mkarchive,
-                        _bfd_bool_bfd_false_error,
-                },
-                {                /* bfd_write_contents */
-                        _bfd_bool_bfd_false_error,
-                        i386omf_write_object_contents,
-                        _bfd_write_archive_contents,
-                        _bfd_bool_bfd_false_error,
-                },
+{
+  "i386omf",			/* name */
+  bfd_target_omf_flavour,	/* flavour */
+  BFD_ENDIAN_LITTLE,		/* byteorder */
+  BFD_ENDIAN_LITTLE,		/* header_byteorder */
+  (HAS_RELOC | HAS_SYMS | HAS_LOCALS), /* object_flags */
+  (SEC_ALLOC | SEC_LOAD | SEC_LOAD | SEC_RELOC | SEC_READONLY
+   | SEC_CODE | SEC_DATA | SEC_ROM | SEC_HAS_CONTENTS
+   | SEC_IN_MEMORY | SEC_GROUP), /* section_flags */
+  0,				/* symbol_leading_char */
+  ' ',				/* ar_pad_char */
+  16,				/* ar_max_namelen */
+  255,				/* match priority.  */
+  TARGET_KEEP_UNUSED_SECTION_SYMBOLS, /* keep unused section symbols.  */
+  bfd_getl64, bfd_getl_signed_64, bfd_putl64,
+  bfd_getl32, bfd_getl_signed_32, bfd_putl32,
+  bfd_getl16, bfd_getl_signed_16, bfd_putl16,	/* data */
+  bfd_getl64, bfd_getl_signed_64, bfd_putl64,
+  bfd_getl32, bfd_getl_signed_32, bfd_putl32,
+  bfd_getl16, bfd_getl_signed_16, bfd_putl16,	/* hdrs */
+  {				/* bfd_check_format */
+        _bfd_dummy_target,
+        i386omf_object_p,
+        _bfd_dummy_target,
+        _bfd_dummy_target,
+  },
+  {				/* bfd_set_format */
+          _bfd_bool_bfd_false_error,
+          binary_mkobject,
+          _bfd_bool_bfd_false_error,
+          _bfd_bool_bfd_false_error,
+  },
+  {				/* bfd_write_contents */
+          _bfd_bool_bfd_false_error,
+          i386omf_write_object_contents,
+          _bfd_bool_bfd_false_error,
+          _bfd_bool_bfd_false_error,
+  },
 
-                BFD_JUMP_TABLE_GENERIC(i386omf),
-                BFD_JUMP_TABLE_COPY(i386omf),
-                BFD_JUMP_TABLE_CORE(_bfd_nocore),
-                BFD_JUMP_TABLE_ARCHIVE(_bfd_noarchive),
-                BFD_JUMP_TABLE_SYMBOLS(i386omf),
-                BFD_JUMP_TABLE_RELOCS(i386omf),
-                BFD_JUMP_TABLE_WRITE(binary),
-                BFD_JUMP_TABLE_LINK(binary),
-                BFD_JUMP_TABLE_DYNAMIC(_bfd_nodynamic),
+  BFD_JUMP_TABLE_GENERIC (i386omf),
+  BFD_JUMP_TABLE_COPY (_bfd_generic),
+  BFD_JUMP_TABLE_CORE (_bfd_nocore),
+  BFD_JUMP_TABLE_ARCHIVE (_bfd_noarchive),
+  BFD_JUMP_TABLE_SYMBOLS (i386omf),
+  BFD_JUMP_TABLE_RELOCS (i386omf),
+  BFD_JUMP_TABLE_WRITE (binary),
+  BFD_JUMP_TABLE_LINK (binary),
+  BFD_JUMP_TABLE_DYNAMIC (_bfd_nodynamic),
 
                 NULL,
 
