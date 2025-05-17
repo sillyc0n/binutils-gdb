@@ -421,7 +421,7 @@ hexdump(bfd_byte const *p, bfd_size_type len) {
 
     /* XXX - 1000 is the size of _bfd_default_error_handler()'s buffer. */
     if (len > 1000 / 3) {
-        (*_bfd_error_handler)("(truncated hexdump)");
+        _bfd_error_handler(_("(truncated hexdump)"));
         len = 1000 / 3;
     }
 
@@ -433,9 +433,9 @@ hexdump(bfd_byte const *p, bfd_size_type len) {
     if (s == NULL)
         return;
     for (i = 0; i < len; i++) {
-        sprintf(s + i * 3, " %02llx", bfd_get_8(abfd, p + i));
+        sprintf(s + i * 3, " %02x", (unsigned int)bfd_get_8(abfd, p + i));
     }
-    (*_bfd_error_handler)(s);
+    _bfd_error_handler("%s", s);
     free(s);
 }
 
@@ -620,9 +620,9 @@ i386omf_read_coment(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
                 struct i386omf_borland_dependency *dep;
                 bfd_size_type slen;
 
-                if (reclen < 5) {
-                    (*_bfd_error_handler)("Truncated Borland dependency list at 0x%x",
-                                          p - tdata->image);
+                if (reclen < 5) {                    
+                    _bfd_error_handler(_("Truncated Borland dependency list at 0x%lx"),
+                                        (unsigned long)(p - tdata->image));
                     break;
                 }
 
@@ -670,9 +670,11 @@ i386omf_read_coment(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
         case OMF_COMENT_MEMORY_MODEL:
         case OMF_COMENT_NEWEXT:
             break;
-        default:
-            (*_bfd_error_handler)("Unknown record COMENT type: 0x%02x class: 0x%02x at 0x%04x",
-                                  comment_type, comment_class, p - tdata->image - 1);
+        default:            
+            _bfd_error_handler("Unknown record COMENT type: 0x%02x class: 0x%02x at 0x%04lx",
+                                comment_type, 
+                                comment_class, 
+                                (unsigned long)(p - tdata->image - 1));
             bfd_set_error(bfd_error_wrong_format);
             return false;
     }
@@ -816,9 +818,9 @@ i386omf_read_pubdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32
         return false;
     if (base_segment == OMF_PUBDEF_SEGMENT_ABSOLUTE) {
         /* Rarely used absolute-address symbol. */
-        if (reclen < 2) {
-            (*_bfd_error_handler)("Truncated base frame in PUBDEF at 0x%X",
-                                  p - tdata->image);
+        if (reclen < 2) {            
+            _bfd_error_handler("Truncated base frame in PUBDEF at 0x%lX",
+                (unsigned long)(p - tdata->image));                                  
             bfd_set_error(bfd_error_wrong_format);
             return false;
         }
@@ -876,16 +878,18 @@ i386omf_read_pubdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32
 
             group = strtab_lookup(tdata->grpdef, base_group);
             if (group == NULL) {
-                (*_bfd_error_handler)("PUBDEF %s in unknown GRPDEF %d",
-                                      pubdef->base.name, base_group);
+                _bfd_error_handler("PUBDEF %s in unknown GRPDEF %lu",
+                                      pubdef->base.name, 
+                                      (unsigned long)base_group);
                 bfd_set_error(bfd_error_wrong_format);
                 return false;
             }
             strtab_add(group->pubdef, pubdef);
 
             if (base_frame) {
-                (*_bfd_error_handler)("PUBDEF %s has nonzero base frame 0x%04x",
-                                      pubdef->base.name, base_frame);
+                _bfd_error_handler("PUBDEF %s has nonzero base frame 0x%04lx",
+                                    pubdef->base.name, 
+                                    (unsigned long)base_frame);
             }
         } else {
             /* Absolute exported symbol. */
@@ -946,8 +950,9 @@ i386omf_read_segdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32
             absolute_addr += bfd_get_8(abfd, p + 3);
 
             if (reclen < 4) {
-                (*_bfd_error_handler)("SEGDEF at 0x%lx is truncated, only %u bytes remain.",
-                                      p - tdata->image, reclen);
+                _bfd_error_handler("SEGDEF at 0x%lx is truncated, only %lu bytes remain.",
+                                      (unsigned long)(p - tdata->image), 
+                                      (unsigned long)reclen);
                 bfd_set_error(bfd_error_wrong_format);
                 return false;
             }
@@ -968,10 +973,10 @@ i386omf_read_segdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32
         if (!i386omf_read_index(abfd, &overlay_index, &p, &reclen))
             return false;
 
-        if (alignment == OMF_SEGDEF_ALIGNMENT_UNDEFINED) {
-            (*_bfd_error_handler)("Segment %d (%s) wants alignment = 7",
-                                  name_index,
-                                  strtab_lookup(tdata->lnames, name_index));
+        if (alignment == OMF_SEGDEF_ALIGNMENT_UNDEFINED) {            
+            _bfd_error_handler("Segment %d (%s) wants alignment = 7",
+                                name_index,
+                                strtab_lookup(tdata->lnames, name_index) ? ((struct counted_string *)strtab_lookup(tdata->lnames, name_index))->data : "<?>");                                  
             bfd_set_error(bfd_error_wrong_format);
             return false;
         }
@@ -983,9 +988,10 @@ i386omf_read_segdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32
         seg->name_index = name_index;
         seg->class_index = class_index;
         seg->overlay_index = overlay_index;
-        //(*_bfd_error_handler) ("SEGDEF name_index: %x, class_index: %x, overlay_index: %x\n", name_index, class_index, overlay_index);
-        _bfd_error_handler(_("SEGDEF name_index:  %x, class_index: %x, overlay_index: %x"), name_index, class_index,
-                           overlay_index);
+        _bfd_error_handler(_("SEGDEF name_index:  %x, class_index: %x, overlay_index: %x"),
+                            name_index, 
+                            class_index,
+                            overlay_index);                            
         seg->pubdef = strtab_new(abfd);
         if (seg->pubdef == NULL)
             return false;
@@ -1279,8 +1285,8 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
                         return false;
                     segdef = strtab_lookup(tdata->segdef, target);
                     if (segdef == NULL) {
-                        (*_bfd_error_handler)("FIXUP at 0x%x wants phantom segment [%d]",
-                                              q - tdata->image, target);
+                        _bfd_error_handler("FIXUP at 0x%lx wants phantom segment [%d]",
+                                            (unsigned long)(q - tdata->image), target);
                         bfd_set_error(bfd_error_wrong_format);
                         return false;
                     }
@@ -1291,9 +1297,9 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
                     if (!(fixdata & OMF_FIX_DATA_TARGET_THREAD) && !i386omf_read_index(abfd, &target, &p, &reclen))
                         return false;
                     grpdef = strtab_lookup(tdata->grpdef, target);
-                    if (grpdef == NULL) {
-                        (*_bfd_error_handler)("FIXUP at 0x%x wants phantom group [%d]",
-                                              q - tdata->image, target);
+                    if (grpdef == NULL) {                        
+                        _bfd_error_handler("FIXUP at 0x%lx wants displacement but none given [%d]",
+                            (unsigned long)(q - tdata->image), target);
                         bfd_set_error(bfd_error_wrong_format);
                         return false;
                     }
@@ -1324,9 +1330,10 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
             // displacement is provided if P bit is set to 0
             if (!(fixdata & 0x80) >> 0x7) {
                 if (!i386omf_read_offset(abfd, &displacement, &p, &reclen,
-                                         I386OMF_OFFSET_SIZE_16)) {
-                    (*_bfd_error_handler)("FIXUP at 0x%x wants displacement but none given [%d]\n",
-                                          q - tdata->image, target);
+                                         I386OMF_OFFSET_SIZE_16)) {                    
+                    _bfd_error_handler("FIXUP at 0x%lx wants displacement but none given [%d]",
+                                        (unsigned long)(q - tdata->image), 
+                                        target);
                     bfd_set_error(bfd_error_wrong_format);
                     return false;
                 }
@@ -1441,8 +1448,9 @@ i386omf_add_section_lidata(bfd *abfd, struct bfd_section *asect,
 
         if ((asect->size < *offset)
             || (asect->size - *offset < (bfd_size_type) licount)) {
-            (*_bfd_error_handler)("LIDATA at 0x%lx overflows section %A",
-                                  asect, p - tdata->image);
+            _bfd_error_handler("LIDATA at 0x%lx overflows section %s",
+                                    (unsigned long)(p - tdata->image),
+                                    bfd_section_name(asect));
             bfd_set_error(bfd_error_wrong_format);
             return 0;
         }
@@ -1460,9 +1468,10 @@ i386omf_add_section_lidata(bfd *abfd, struct bfd_section *asect,
             if (!subeaten)
                 return 0;
 
-            if (subeaten > reclen) {
-                (*_bfd_error_handler)("LIDATA at 0x%lx overflows section %A",
-                                      asect, p - tdata->image);
+            if (subeaten > reclen) {                
+                _bfd_error_handler("LIDATA at 0x%lx overflows section %s",
+                                    (unsigned long)(p - tdata->image),
+                                    bfd_section_name(asect));
                 bfd_set_error(bfd_error_wrong_format);
                 return 0;
             }
@@ -1470,9 +1479,10 @@ i386omf_add_section_lidata(bfd *abfd, struct bfd_section *asect,
             p += subeaten;
             reclen -= subeaten;
         }
-        if (reclen)
-            (*_bfd_error_handler)("Leftover LIDATA at 0x%lx in section %A",
-                                  asect, p - tdata->image);
+        if (reclen)            
+            _bfd_error_handler("Leftover LIDATA at 0x%lx in section %s",
+                                (unsigned long)(p - tdata->image),
+                                bfd_section_name(asect));
     }
 
     return eaten;
@@ -1489,9 +1499,9 @@ i386omf_add_section_data(bfd *abfd,
     /* Lazily allocate memory for section data. */
     if ((asect->flags & SEC_IN_MEMORY) == 0) {
         asect->contents = bfd_zalloc(abfd, asect->size);
-        if (asect->contents == NULL) {
-            (*_bfd_error_handler)("Out of memory for %A section contents",
-                                  asect);
+        if (asect->contents == NULL) {            
+            _bfd_error_handler("Out of memory for %s section contents",
+                                bfd_section_name(asect));
             return false;
         }
         asect->flags |= SEC_IN_MEMORY;
@@ -1504,9 +1514,10 @@ i386omf_add_section_data(bfd *abfd,
             return false;
     } else {
         /* LEDATA, 0xa2 or 0xa3. */
-        if ((asect->size < offset) || (asect->size - offset < reclen)) {
-            (*_bfd_error_handler)("LEDATA at 0x%lx overflows section %A",
-                                  asect, p - tdata->image);
+        if ((asect->size < offset) || (asect->size - offset < reclen)) {     
+            _bfd_error_handler("LEDATA at 0x%lx overflows section %s",
+                      (unsigned long)(p - tdata->image),
+                      bfd_section_name(asect));      
             bfd_set_error(bfd_error_wrong_format);
             return false;
         }
@@ -1530,15 +1541,16 @@ i386omf_read_leidata(bfd *abfd, bfd_byte const *p,
 
     if (seg_index <= OMF_SEGDEF_NONE) {
         (*_bfd_error_handler)("LEDATA at 0x%lx has no segment",
-                              p - tdata->image);
+                             p - tdata->image);
         bfd_set_error(bfd_error_wrong_format);
         return false;
     }
 
     segdef = strtab_lookup(tdata->segdef, seg_index);
     if (segdef == NULL) {
-        (*_bfd_error_handler)("LEDATA at 0x%lx wants phantom segment [%d]",
-                              p - tdata->image, seg_index);
+        _bfd_error_handler("LEDATA at 0x%lx wants phantom segment [%d]",
+                            p - tdata->image, 
+                            seg_index);
         bfd_set_error(bfd_error_wrong_format);
         return false;
     }
@@ -1630,8 +1642,9 @@ process_record(bfd *abfd,
             record_ok = i386omf_read_comdef(abfd, p, reclen);
             break;
         default:
-            (*_bfd_error_handler)("Unknown RECORD record 0x%02x at 0x%X",
-                                  rectype, p - tdata->image);
+            _bfd_error_handler("Unknown RECORD record 0x%02x at 0x%X", 
+                rectype, 
+                (unsigned int)(p - tdata->image));
 
             bfd_set_error(bfd_error_wrong_format);
             record_ok = false;

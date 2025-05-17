@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-test:
+  build-upload-release:
     runs-on: ubuntu-latest
     env:
       INSTALL_DIR: "/tmp/binutils"
@@ -36,7 +36,7 @@ jobs:
     - name: Build
       run: |
         cd build
-        make CFLAGS="-O0 -g -Wno-unused-but-set-variable -Wno-unused-function" CXXFLAGS="-Wno-error -Wno-deprecated-declarations" || exit 1
+        make CFLAGS="-g -Wno-unused-but-set-variable -Wno-unused-function" CXXFLAGS="-Wno-error -Wno-deprecated-declarations" || exit 1
         make install || exit 1        
 
     - name: Package
