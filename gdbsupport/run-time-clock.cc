@@ -49,7 +49,11 @@ get_run_time (user_cpu_time_clock::time_point &user,
   switch (scope)
     {
     case run_time_scope::thread:
-      who = RUSAGE_THREAD;
+      #ifdef RUSAGE_THREAD
+        who = RUSAGE_THREAD;
+      #else
+        who = RUSAGE_SELF;  // fallback for platforms that don't support RUSAGE_THREAD
+      #endif
       break;
 
     case run_time_scope::process:
