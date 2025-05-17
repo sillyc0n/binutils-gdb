@@ -721,11 +721,11 @@ i386omf_read_comdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
 
         slen = i386omf_read_string(abfd, &extdef->name, p, reclen);
         if (slen < 1) {
-            _bfd_error_handler(_("COMDEF read error: 0x%x"), slen);
+            _bfd_error_handler("COMDEF read error: 0x%llx", (unsigned long long)slen);
             bfd_set_error(bfd_error_wrong_format);
             return false;
         }
-        fprintf(stderr, "COMDEF read: 0s", &extdef->name);
+        fprintf(stderr, "COMDEF read: 0%s", extdef->name.data);
         p += slen;
         reclen -= slen;
 
@@ -1160,9 +1160,9 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
             fixdata = bfd_get_8(abfd, p + 2);
             p += 3;                                                           // Advances the pointer p past the processed bytes
             reclen -= 3;                                                      // and decrements reclen accordingly.
-            //(*_bfd_error_handler)(" FIXUP subrec at [%p]: %02x, M: %0x, location: %02x, offset: %02x, fixdata: %02x\n", p, subrec, (subrec&OMF_FIXUP_SEGREL)>>6, location, offset, fixdata);
-            fprintf(stderr, " FIXUP subrec at [%p]: %02x, M: %0x, location: %02x, offset: %02x, fixdata: %02x\n",
-                    p, subrec, (subrec & OMF_FIXUP_SEGREL) >> 6, location, offset, fixdata);
+            fprintf(stderr, " FIXUP subrec at [%p]: %02x, M: %02x, location: %02x, offset: %02llx, fixdata: %02llx\n",
+                    p, subrec, (subrec & OMF_FIXUP_SEGREL) >> 6, location, (unsigned long long)offset, (unsigned long long)fixdata);
+
             if (fixdata & OMF_FIX_DATA_FRAME_THREAD) {
                 /* FRAME for this fixup is specified by a reference to a previous thread field. */
                 struct i386_fixup_thread *frame_thread;
@@ -1305,9 +1305,9 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
                         return false;
                     sym = strtab_lookup(tdata->externs, target);
                     if (sym == NULL) {
-                        _bfd_error_handler(_("FIXUP at 0x%x wants phantom extern [%d]"),
-                                //(*_bfd_error_handler)("FIXUP at 0x%x wants phantom extern [%d]",
-                                           q - tdata->image, target);
+                        _bfd_error_handler("FIXUP at 0x%lx wants phantom extern [%d]",
+                                           (unsigned long)(q - tdata->image),
+                                           target);
                         bfd_set_error(bfd_error_wrong_format);
                         return false;
                     }
@@ -1568,7 +1568,7 @@ process_record(bfd *abfd,
                bfd_byte const *p) {
     struct i386omf_obj_data *tdata = abfd->tdata.any;
     bool record_ok;
-    fprintf(stderr, "i386omf process_record rectype: 0x%2x, reclen: %lu\n", rectype, reclen);
+    fprintf(stderr, "i386omf process_record rectype: 0x%2x, reclen: %llu\n", rectype, (unsigned long long)reclen);
     //_bfd_error_handler(_("i386omf process_record rectype: 0x%2x, reclen: %lu"), rectype, reclen);
     switch (rectype) {
         case OMF_RECORD_THEADR: /* Translator header. */
@@ -2067,7 +2067,7 @@ i386omf_canonicalize_reloc(bfd *abfd ATTRIBUTE_UNUSED,
 #define binary_set_arch_mach _bfd_generic_set_arch_mach
 
 static bool i386omf_write_object_contents(bfd *abfd) {
-    _bfd_error_handler(_("i386omf_write_object_contents NOT IMPLEMENTED"));
+    _bfd_error_handler("i386omf_write_object_contents NOT IMPLEMENTED %s", abfd->filename);
     bfd_set_error(bfd_error_invalid_operation);
     return false;
 }
@@ -2138,12 +2138,6 @@ binary_set_section_contents(bfd *abfd,
         return true;
 
     return _bfd_generic_set_section_contents(abfd, sec, data, offset, size);
-}
-
-static bool
-i386omf_write_object_contents (bfd *abfd)
-{
-  return false;
 }
 
 /* No space is required for header information.  */
