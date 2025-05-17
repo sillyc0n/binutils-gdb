@@ -3,7 +3,7 @@ name: Build and Upload
 on:
   push:
     branches: [ master, release/*, feature/* ]
-    tags: [ 'v*' ]
+    tags: [ 'snapshot-*' ]
   pull_request:
     branches: [ master, release/*, feature/* ]
   workflow_dispatch:
