@@ -222,123 +222,131 @@
 
 struct i386omf_symbol;
 
-enum i386omf_offset_size {
-    I386OMF_OFFSET_SIZE_16,
-    I386OMF_OFFSET_SIZE_32,
+enum i386omf_offset_size
+{
+  I386OMF_OFFSET_SIZE_16,
+  I386OMF_OFFSET_SIZE_32,
 };
 
-struct counted_string {
-    bfd_size_type len;
-    char *data;
+struct counted_string
+{
+  bfd_size_type len;
+  char* data;
 };
 
-struct i386omf_segment {
-    struct bfd_section *asect;
-    struct strtab *relocs;
-    struct strtab *pubdef;
-    int combination;
-    int name_index;
-    int class_index;
-    int overlay_index;
+struct i386omf_segment
+{
+  struct bfd_section* asect;
+  struct strtab* relocs;
+  struct strtab* pubdef;
+  int combination;
+  int name_index;
+  int class_index;
+  int overlay_index;
 };
 
-struct i386omf_group_entry {
-    enum {
-        GRPDEF_ENTRY_SEGDEF = 0xff,
-    } type;
-    union {
-        int segdef;
-    } u;
+struct i386omf_group_entry
+{
+  enum
+  {
+    GRPDEF_ENTRY_SEGDEF = 0xff,
+  } type;
+  union
+  {
+    int segdef;
+  } u;
 };
 
-struct i386omf_group {
-    int name_index;
-    struct strtab *entries;
-    struct strtab *pubdef;
-    struct i386omf_symbol *symbol;
+struct i386omf_group
+{
+  int name_index;
+  struct strtab* entries;
+  struct strtab* pubdef;
+  struct i386omf_symbol* symbol;
 };
 
-struct i386omf_symbol {
-    asymbol base;
-    struct counted_string name;
-    int type_index;
-    struct i386omf_segment *seg;
-    struct i386omf_group *group;
+struct i386omf_symbol
+{
+  asymbol base;
+  struct counted_string name;
+  int type_index;
+  struct i386omf_segment* seg;
+  struct i386omf_group* group;
 };
 
-struct i386omf_obj_data {
-  bfd_byte *image;
-  char *translator;
+struct i386omf_obj_data
+{
+  bfd_byte* image;
+  char* translator;
   struct counted_string module_name;
   bool is_main_module;
-    bool has_start_address;
-    struct strtab *lnames;
-    struct strtab *segdef;
-    struct strtab *grpdef;
-    struct strtab *externs;
-    struct strtab *abs_pubdef;
-    struct strtab *dependencies;
-    struct i386omf_segment *last_leidata;
-    struct strtab *fixup_threads;
+  bool has_start_address;
+  struct strtab* lnames;
+  struct strtab* segdef;
+  struct strtab* grpdef;
+  struct strtab* externs;
+  struct strtab* abs_pubdef;
+  struct strtab* dependencies;
+  struct i386omf_segment* last_leidata;
+  struct strtab* fixup_threads;
 };
 
-struct i386omf_relent {
-    arelent base;
-    asymbol *symbol;
+struct i386omf_relent
+{
+  arelent base;
+  asymbol* symbol;
 };
 
-struct i386_fixup_thread {
-    int index;
-    int thread_number;
-    bool is_frame;
-    int method;
+struct i386_fixup_thread
+{
+  int index;
+  int thread_number;
+  bool is_frame;
+  int method;
 };
 
-enum reloc_type {
-    R_I386OMF_LO8,          /* 0 */
-    R_I386OMF_OFF16,        /* 1 */
-    R_I386OMF_SEG,          /* 2 */
-    R_I386OMF_FAR16,        /* 3 */
-    R_I386OMF_HI8,          /* 4 */
-    R_I386OMF_OFF16_LOADER, /* 5; PharLap: OFF32 */
-    R_I386OMF_RESERVED_6,   /* 6; PharLap: FAR32 */
-    R_I386OMF_RESERVED_7,   /* 7 */
-    R_I386OMF_RESERVED_8,   /* 8 */
-    R_I386OMF_OFF32,        /* 9 */
-    R_I386OMF_RESERVED_10,  /* 10 */
-    R_I386OMF_FAR32,        /* 11 */
-    R_I386OMF_RESERVED_12,  /* 12 */
-    R_I386OMF_OFF32_LOADER, /* 13 */
+enum reloc_type
+{
+  R_I386OMF_LO8,          /* 0 */
+  R_I386OMF_OFF16,        /* 1 */
+  R_I386OMF_SEG,          /* 2 */
+  R_I386OMF_FAR16,        /* 3 */
+  R_I386OMF_HI8,          /* 4 */
+  R_I386OMF_OFF16_LOADER, /* 5; PharLap: OFF32 */
+  R_I386OMF_RESERVED_6,   /* 6; PharLap: FAR32 */
+  R_I386OMF_RESERVED_7,   /* 7 */
+  R_I386OMF_RESERVED_8,   /* 8 */
+  R_I386OMF_OFF32,        /* 9 */
+  R_I386OMF_RESERVED_10,  /* 10 */
+  R_I386OMF_FAR32,        /* 11 */
+  R_I386OMF_RESERVED_12,  /* 12 */
+  R_I386OMF_OFF32_LOADER, /* 13 */
 
-    /* Some relocs to support other-than-target frames. */
-    R_I386OMF_WRT_FRAME,
+  /* Some relocs to support other-than-target frames. */
+  R_I386OMF_WRT_FRAME,
 };
 
-struct i386omf_borland_dependency {
-    struct counted_string filename;
-    int time;
-    int date;
+struct i386omf_borland_dependency
+{
+  struct counted_string filename;
+  int time;
+  int date;
 };
 
-static const char *const thread_method[8] = {
-        "Segment Index + Displacement (SEGDEF)",
+static const char* const thread_method[8]
+    = { "Segment Index + Displacement (SEGDEF)",
         "Group Index + Displacement (GRPDEF)",
         "External Index + Displacement (EXTDEF)",
         "Frame number",
         "Segment Index (SEGDEF)",
         "Group Index (GRPDEF)",
         "External Index (EXTDEF)",
-        "Frame number"
-};
+        "Frame number" };
 
 static bfd_reloc_status_type
-i386omf_fix_wrt_frame(bfd *abfd,
-                      arelent *reloc_entry,
-                      asymbol *symbol,
-                      void *data,
-                      asection *input_section,
-                      bfd *output_bfd,
-                      char **error_message);
+i386omf_fix_wrt_frame(bfd* abfd, arelent* reloc_entry, asymbol* symbol,
+                      void* data, asection* input_section, bfd* output_bfd,
+                      char** error_message);
 
 /**
  * Record type 9DH is new for LINK386; it has a Target Displacement field
@@ -409,497 +417,730 @@ reloc_howto_type howto_table_i386omf_segrel[] = {
  * relocations: just add the PSP frame 65520 times!  (It may break the DOS
  * EXE loader though.)
  */
-reloc_howto_type howto_wrt_segdef =
-        HOWTO(R_I386OMF_WRT_FRAME, 0, 3, 16, false, 0, complain_overflow_bitfield, &i386omf_fix_wrt_frame,
-              "WRTSEG", false, 0xffff, 0xffff, false);
+reloc_howto_type howto_wrt_segdef
+    = HOWTO(R_I386OMF_WRT_FRAME, 0, 3, 16, false, 0, complain_overflow_bitfield,
+            &i386omf_fix_wrt_frame, "WRTSEG", false, 0xffff, 0xffff, false);
 
+/*
+INTERNAL_FUNCTION
+    hexdump
+
+SYNOPSIS
+    static void hexdump (bfd_byte const *p, bfd_size_type len);
+
+DESCRIPTION
+    Print a hex dump of a memory region for debugging.
+    Formats up to 333 bytes from the given pointer as a space-separated
+    string of two-digit hex values, and prints it using _bfd_error_handler.
+    If the region is too large, the output is truncated and a warning is printed.
+
+    @param p   Pointer to the start of the memory region.
+    @param len Number of bytes to print.
+*/
 static void
-hexdump(bfd_byte const *p, bfd_size_type len) {
-    bfd_size_type i;
-    char *s;
-    size_t amt;
+hexdump(bfd_byte const* p, bfd_size_type len)
+{
+  bfd_size_type i;
+  char* s;
+  size_t amt;
 
-    /* XXX - 1000 is the size of _bfd_default_error_handler()'s buffer. */
-    if (len > 1000 / 3) {
-        _bfd_error_handler(_("(truncated hexdump)"));
-        len = 1000 / 3;
-    }
+  /* XXX - 1000 is the size of _bfd_default_error_handler()'s buffer. */
+  if (len > 1000 / 3)
+  {
+    _bfd_error_handler(_("(truncated hexdump)"));
+    len = 1000 / 3;
+  }
 
-    if (_bfd_mul_overflow (len + 1, 3, &amt)) {
-        bfd_set_error(bfd_error_file_too_big);
-    }
+  if (_bfd_mul_overflow(len + 1, 3, &amt))
+  {
+    bfd_set_error(bfd_error_file_too_big);
+  }
 
-    s = bfd_malloc(amt); /* +1 for NUL. */
-    if (s == NULL)
-        return;
-    for (i = 0; i < len; i++) {
-        sprintf(s + i * 3, " %02x", (unsigned int)bfd_get_8(abfd, p + i));
-    }
-    _bfd_error_handler("%s", s);
-    free(s);
+  s = bfd_malloc(amt); /* +1 for NUL. */
+  if (s == NULL)
+    return;
+  for (i = 0; i < len; i++)
+  {
+    sprintf(s + i * 3, " %02x", (unsigned int) bfd_get_8(abfd, p + i));
+  }
+  _bfd_error_handler("%s", s);
+  free(s);
 }
 
+/*
+    i386omf_read_index
+
+SYNOPSIS
+    static bool i386omf_read_index(bfd *abfd, int *idx, bfd_byte const **p, bfd_size_type *reclen);
+
+DESCRIPTION
+    Read an OMF variable-length index from the input buffer.
+    OMF indices are either one or two bytes long. This function reads the index,
+    updates the pointer and remaining length, and stores the result in *idx.
+    On error (e.g., truncated input), it reports an error and returns false.
+
+    @param abfd   The BFD file handle.
+    @param idx    Pointer to store the decoded index value.
+    @param p      Pointer to the current buffer pointer (updated on success).
+    @param reclen Pointer to the remaining record length (updated on success).
+    @return       true on success, false on error.
+*/
 static bool
-i386omf_read_index(bfd *abfd,
-                   int *idx,
-                   bfd_byte const **p,
-                   bfd_size_type *reclen) {
-    struct i386omf_obj_data *tdata = abfd->tdata.any;
-    int v;
+i386omf_read_index(bfd* abfd, int* idx, bfd_byte const** p,
+                   bfd_size_type* reclen)
+{
+  struct i386omf_obj_data* tdata = abfd->tdata.any;
+  int v;
 
-    if (*reclen < 1) {
-        (*_bfd_error_handler)("Index truncated at 0x%lx.", *p - tdata->image);
-        bfd_set_error(bfd_error_wrong_format);
-        return false;
-    }
-
-    v = *(*p)++;
-    (*reclen)--;
-    if (v & OMF_INDEX_2BYTES) {
-        if (*reclen < 1) {
-            (*_bfd_error_handler)("Index truncated at 0x%lx.",
-                                  *p - tdata->image);
-            bfd_set_error(bfd_error_wrong_format);
-            return false;
-        }
-        v = (v & OMF_INDEX_LOWMASK) * 256 + *(*p)++;
-        (*reclen)--;
-    }
-
-    *idx = v;
-
-    return true;
-}
-
-static bool
-i386omf_read_offset(bfd *abfd,
-                    bfd_vma *offset,
-                    bfd_byte const **p,
-                    bfd_size_type *reclen,
-                    enum i386omf_offset_size sz) {
-    struct i386omf_obj_data *tdata = abfd->tdata.any;
-    bfd_size_type offset_len = 0;
-
-    switch (sz) {
-        case I386OMF_OFFSET_SIZE_16:
-            offset_len = 2;
-            break;
-        case I386OMF_OFFSET_SIZE_32:
-            offset_len = 4;
-            break;
-    }
-
-    /* TODO: Handle 32-bit OMF records. */
-    if (*reclen < offset_len) {
-        (*_bfd_error_handler)("Offset truncated at 0x%lx.", *p - tdata->image);
-        bfd_set_error(bfd_error_wrong_format);
-        return false;
-    }
-
-    if (offset) {
-        switch (sz) {
-            case I386OMF_OFFSET_SIZE_16:
-                *offset = bfd_get_16(abfd, *p);
-                break;
-            case I386OMF_OFFSET_SIZE_32:
-                *offset = bfd_get_32(abfd, *p);
-                break;
-        }
-    }
-
-    *p += offset_len;
-    *reclen -= offset_len;
-
-    return true;
-}
-
-static bfd_size_type
-i386omf_read_string(bfd *abfd,
-                    struct counted_string *s,
-                    bfd_byte const *p,
-                    bfd_size_type reclen) {
-    struct i386omf_obj_data *tdata = abfd->tdata.any;
-    bfd_size_type slen = *p;
-
-    if (slen + 1 > reclen) {
-        (*_bfd_error_handler)("Counted string at 0x%lx overflows its record.",
-                              p - tdata->image);
-        bfd_set_error(bfd_error_wrong_format);
-        return 0;
-    }
-
-    s->len = slen;
-    s->data = bfd_alloc(abfd, slen + 1);
-    if (s->data == NULL)
-        return 0;
-    memcpy(s->data, p + 1, slen);
-    s->data[slen] = 0;
-
-    return (slen + 1);
-}
-
-static char const *
-i386omf_lookup_string(struct strtab *tab, int i, char const *def) {
-    struct counted_string *s;
-
-    if (i == 0)
-        return def;
-
-    s = strtab_lookup(tab, i);
-
-    if (s && s->data)
-        return s->data;
-
-    (*_bfd_error_handler)("Bad name index requested from string table at %p",
-                          tab);
+  if (*reclen < 1)
+  {
+    (*_bfd_error_handler)("Index truncated at 0x%lx.", *p - tdata->image);
     bfd_set_error(bfd_error_wrong_format);
+    return false;
+  }
 
-    return NULL;
+  v = *(*p)++;
+  (*reclen)--;
+  if (v & OMF_INDEX_2BYTES)
+  {
+    if (*reclen < 1)
+    {
+      (*_bfd_error_handler)("Index truncated at 0x%lx.", *p - tdata->image);
+      bfd_set_error(bfd_error_wrong_format);
+      return false;
+    }
+    v = (v & OMF_INDEX_LOWMASK) * 256 + *(*p)++;
+    (*reclen)--;
+  }
+
+  *idx = v;
+
+  return true;
+}
+
+/*
+    i386omf_read_offset
+
+SYNOPSIS
+    static bool i386omf_read_offset(bfd *abfd, bfd_vma *offset, bfd_byte const **p,
+                                   bfd_size_type *reclen, enum i386omf_offset_size sz);
+
+DESCRIPTION
+    Read an OMF offset value from the input buffer.
+    The offset can be either 16 or 32 bits, depending on the 'sz' parameter.
+    This function reads the offset, updates the pointer and remaining length,
+    and stores the result in *offset. On error (e.g., truncated input),
+    it reports an error and returns false.
+
+    @param abfd   The BFD file handle.
+    @param offset Pointer to store the decoded offset value.
+    @param p      Pointer to the current buffer pointer (updated on success).
+    @param reclen Pointer to the remaining record length (updated on success).
+    @param sz     The size of the offset (16 or 32 bits).
+    @return       true on success, false on error.
+*/
+static bool
+i386omf_read_offset(bfd* abfd, bfd_vma* offset, bfd_byte const** p,
+                    bfd_size_type* reclen, enum i386omf_offset_size sz)
+{
+  struct i386omf_obj_data* tdata = abfd->tdata.any;
+  bfd_size_type offset_len = 0;
+
+  switch (sz)
+  {
+    case I386OMF_OFFSET_SIZE_16:
+      offset_len = 2;
+      break;
+    case I386OMF_OFFSET_SIZE_32:
+      offset_len = 4;
+      break;
+  }
+
+  /* TODO: Handle 32-bit OMF records. */
+  if (*reclen < offset_len)
+  {
+    (*_bfd_error_handler)("Offset truncated at 0x%lx.", *p - tdata->image);
+    bfd_set_error(bfd_error_wrong_format);
+    return false;
+  }
+
+  if (offset)
+  {
+    switch (sz)
+    {
+      case I386OMF_OFFSET_SIZE_16:
+        *offset = bfd_get_16(abfd, *p);
+        break;
+      case I386OMF_OFFSET_SIZE_32:
+        *offset = bfd_get_32(abfd, *p);
+        break;
+    }
+  }
+
+  *p += offset_len;
+  *reclen -= offset_len;
+
+  return true;
+}
+
+/*
+    i386omf_read_string
+
+SYNOPSIS
+    static bfd_size_type i386omf_read_string(bfd* abfd, struct counted_string* s, bfd_byte const* p, bfd_size_type reclen);
+
+DESCRIPTION
+    Reads a counted string from the input buffer. The first byte is the length,
+    followed by the string data. Allocates memory for the string and stores it in 's'.
+    Returns the total number of bytes consumed (length + 1), or 0 on error.
+
+    @param abfd   The BFD file handle.
+    @param s      Pointer to a counted_string struct to fill.
+    @param p      Pointer to the current buffer position.
+    @param reclen Remaining record length.
+    @return       Number of bytes consumed, or 0 on error.
+*/
+static bfd_size_type
+i386omf_read_string(bfd* abfd, struct counted_string* s, bfd_byte const* p,
+                    bfd_size_type reclen)
+{
+  struct i386omf_obj_data* tdata = abfd->tdata.any;
+  bfd_size_type slen = *p;
+
+  if (slen + 1 > reclen)
+  {
+    (*_bfd_error_handler)("Counted string at 0x%lx overflows its record.",
+                          p - tdata->image);
+    bfd_set_error(bfd_error_wrong_format);
+    return 0;
+  }
+
+  s->len = slen;
+  s->data = bfd_alloc(abfd, slen + 1);
+  if (s->data == NULL)
+    return 0;
+  memcpy(s->data, p + 1, slen);
+  s->data[slen] = 0;
+
+  return (slen + 1);
+}
+
+/*
+    i386omf_lookup_string
+
+SYNOPSIS
+    static char const* i386omf_lookup_string(struct strtab* tab, int i, char const* def);
+
+DESCRIPTION
+    Looks up a string by index in a string table. If the index is 0, returns the default string.
+    If the index is invalid or the string is missing, reports an error and returns NULL.
+
+    @param tab    Pointer to the string table.
+    @param i      Index to look up.
+    @param def    Default string to return if index is 0.
+    @return       Pointer to the string, or NULL on error.
+*/
+static char const*
+i386omf_lookup_string(struct strtab* tab, int i, char const* def)
+{
+  struct counted_string* s;
+
+  if (i == 0)
+    return def;
+
+  s = strtab_lookup(tab, i);
+
+  if (s && s->data)
+    return s->data;
+
+  (*_bfd_error_handler)("Bad name index requested from string table at %p",
+                        tab);
+  bfd_set_error(bfd_error_wrong_format);
+
+  return NULL;
 }
 
 /* Create a binary object.  Invoked via bfd_set_format.  */
+/*
 
+    binary_mkobject
+
+SYNOPSIS
+    static bool binary_mkobject(bfd* abfd);
+
+DESCRIPTION
+    Initializes a binary object. This function is a stub and always returns true.
+
+    @param abfd   The BFD file handle.
+    @return       true.
+*/
 static bool
-binary_mkobject(bfd *abfd ATTRIBUTE_UNUSED) {
-    return true;
+binary_mkobject(bfd* abfd ATTRIBUTE_UNUSED)
+{
+  return true;
 }
 
+/*
+    i386omf_read_coment
+
+SYNOPSIS
+    static bool i386omf_read_coment(bfd* abfd, bfd_byte const* p, bfd_size_type reclen);
+
+DESCRIPTION
+    Reads and processes an OMF COMENT record. Handles various comment classes,
+    including dependencies and translator strings. Reports errors for unknown or malformed records.
+
+    @param abfd   The BFD file handle.
+    @param p      Pointer to the record data.
+    @param reclen Length of the record data.
+    @return       true on success, false on error.
+*/
 static bool
-i386omf_read_coment(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
-    struct i386omf_obj_data *tdata = abfd->tdata.any;
-    int comment_type, comment_class;
+i386omf_read_coment(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
+{
+  struct i386omf_obj_data* tdata = abfd->tdata.any;
+  int comment_type, comment_class;
 
-    if (reclen < OMF_RECORD_HEADER_COMENT) {
-        (*_bfd_error_handler)("Truncated COMENT record.");
-        bfd_set_error(bfd_error_wrong_format);
-        return false;
-    }
+  if (reclen < OMF_RECORD_HEADER_COMENT)
+  {
+    (*_bfd_error_handler)("Truncated COMENT record.");
+    bfd_set_error(bfd_error_wrong_format);
+    return false;
+  }
 
-    comment_type = bfd_get_8(abfd, p + 0);
-    comment_class = bfd_get_8(abfd, p + 1);
-    p += OMF_RECORD_HEADER_COMENT;
-    reclen -= OMF_RECORD_HEADER_COMENT;
+  comment_type = bfd_get_8(abfd, p + 0);
+  comment_class = bfd_get_8(abfd, p + 1);
+  p += OMF_RECORD_HEADER_COMENT;
+  reclen -= OMF_RECORD_HEADER_COMENT;
 
-    switch (comment_class) {
-        case OMF_COMENT_TRANSLATOR:
-            if (tdata->translator)
-                (*_bfd_error_handler)("Translator already set to %s",
-                                      tdata->translator);
-            if (reclen && !ISPRINT(bfd_get_8(abfd, p))
-                && bfd_get_8(abfd, p) == reclen - 1) {
-                /* Looks like a length+data style string!
-                   XXX The OMF specification wants a string whose length is
-                   implicit in reclen, but NASM 0.92 and above seem deliberately
-                   to generate a length+data string.  If there appears to be a
-                   length byte that happens to match the reclen-derived length,
-                   omit it from the translator string.  Remove ISPRINT if any
-                   obscure tools turn up whose translator string length byte
-                   happens to encode a printable ASCII character.  */
-                p++;
-                reclen--;
-            }
-            tdata->translator = bfd_alloc(abfd, reclen + 1);
-            strncpy(tdata->translator, (char const *) p, reclen);
-            tdata->translator[reclen] = 0;
-            break;
-        case OMF_COMENT_PASS_SEPARATOR: /* We don't care about it. */
-            break;
-        case OMF_COMENT_SYMBOL_TYPE_EXTDEF:
-        case OMF_COMENT_SYMBOL_TYPE_PUBDEF:
-        case OMF_COMENT_STRUCT_MEMBER:
-        case OMF_COMENT_TYPDEF:
-        case OMF_COMENT_ENUM_MEMBER:
-        case OMF_COMENT_SCOPE_BEGIN:
-        case OMF_COMENT_LOCALS:
-        case OMF_COMENT_SCOPE_END:
-        case OMF_COMENT_SOURCE_FILE:
-            /* http://webster.cs.ucr.edu/Page_TechDocs/boa.txt has record formats. */
-            break;
-        case OMF_COMENT_DEPENDENCIES:
-            while (reclen) {
-                struct i386omf_borland_dependency *dep;
-                bfd_size_type slen;
-
-                if (reclen < 5) {                    
-                    _bfd_error_handler(_("Truncated Borland dependency list at 0x%lx"),
-                                        (unsigned long)(p - tdata->image));
-                    break;
-                }
-
-                dep = bfd_alloc(abfd, sizeof(*dep));
-                if (dep == NULL)
-                    return false;
-
-                /* Some sort of timestamp. */
-                dep->time = bfd_get_16(abfd, p + 0);
-                dep->date = bfd_get_16(abfd, p + 2);
-                p += 4;
-                reclen -= 4;
-
-                /* Source filename. */
-                slen = i386omf_read_string(abfd, &dep->filename, p, reclen);
-                if (slen < 1)
-                    break;
-
-                strtab_add(tdata->dependencies, dep);
-                p += slen;
-                reclen -= slen;
-            }
-            break;
-        case OMF_COMENT_COMPILE_PARAMETERS:
-        case OMF_COMENT_MATCHED_TYPE_EXTDEF:
-        case OMF_COMENT_MATCHED_TYPE_PUBDEF:
-        case OMF_COMENT_CLASSDEF:
-        case OMF_COMENT_COVERAGE_OFFSET:
-        case OMF_COMENT_LARGE_SCOPE_BEGIN:
-        case OMF_COMENT_LARGE_LOCALS:
-        case OMF_COMENT_LARGE_SCOPE_END:
-        case OMF_COMENT_MEMBER_FUNCTION:
-        case OMF_COMENT_DEBUG_VERSION:
-        case OMF_COMENT_OPT_FLAGS:
-            /* http://webster.cs.ucr.edu/Page_TechDocs/boa.txt has record formats. */
-            break;
-        case OMF_COMENT_EASY_OMF:
-        case OMF_COMENT_WAT_PROC_MODEL:
-        case OMF_COMENT_LINKER_DIRECTIVE:
-        case OMF_COMENT_LINKER_DIRECTIVE2:
-        case OMF_COMENT_DLL_ENTRY:
-        case OMF_COMENT_WKEXT:
-        case OMF_COMENT_LZEXT:
-        case OMF_COMENT_DEFAULT_LIBRARY:
-        case OMF_COMENT_MEMORY_MODEL:
-        case OMF_COMENT_NEWEXT:
-            break;
-        default:            
-            _bfd_error_handler("Unknown record COMENT type: 0x%02x class: 0x%02x at 0x%04lx",
-                                comment_type, 
-                                comment_class, 
-                                (unsigned long)(p - tdata->image - 1));
-            bfd_set_error(bfd_error_wrong_format);
-            return false;
-    }
-
-    return true;
-}
-
-static bool
-i386omf_read_modend(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
-    struct i386omf_obj_data *tdata = abfd->tdata.any;
-
-    if (reclen < OMF_RECORD_HEADER_MODEND) {
-        (*_bfd_error_handler)("Truncated MODEND record.");
-        bfd_set_error(bfd_error_wrong_format);
-        return false;
-    }
-
-    tdata->is_main_module = *p & OMF_MODEND_MAIN_MODULE ? true : false;
-    tdata->has_start_address = *p & OMF_MODEND_START_ADDRESS ? true : false;
-
-    if (*p & ~(OMF_MODEND_MAIN_MODULE | OMF_MODEND_START_ADDRESS)) {
-        (*_bfd_error_handler)("Too much cleverness in MODEND record.");
-        hexdump(p, reclen);
-    }
-
-    return true;
-}
-
-static bool
-i386omf_read_comdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
-    fprintf(stderr, "i386omf_read_comdef: %p\n", p);
-
-    struct i386omf_obj_data *tdata = abfd->tdata.any;
-
-    while (reclen) {
-        struct i386omf_symbol *extdef;
-        bfd_size_type slen, dsize, dnum;
-        int data_segment_type;
-
-        extdef = bfd_alloc(abfd, sizeof(*extdef));
-        if (extdef == NULL)
-            return false;
-
-        extdef = (struct i386omf_symbol *) bfd_make_empty_symbol(abfd);
-        abfd->flags |= HAS_SYMS;
-
-        slen = i386omf_read_string(abfd, &extdef->name, p, reclen);
-        if (slen < 1) {
-            _bfd_error_handler("COMDEF read error: 0x%llx", (unsigned long long)slen);
-            bfd_set_error(bfd_error_wrong_format);
-            return false;
-        }
-        fprintf(stderr, "COMDEF read: 0%s", extdef->name.data);
-        p += slen;
-        reclen -= slen;
-
-        if (!i386omf_read_index(abfd, &extdef->type_index, &p, &reclen))
-            return false;
-
-        data_segment_type = bfd_get_8(abfd, p++);
-
-        if (data_segment_type == OMF_COMDEF_DATA_SEG_TYPE_FAR) {
-            dnum = bfd_get_8(abfd, p++);
-            reclen -= 1;
-        }
-
-        dsize = bfd_get_8(abfd, p++);
-        reclen -= 2;
-
-        extdef->base.name = extdef->name.data;
-        /* Maybe? extdef->base.flags |= BSF_WEAK; */
-        /* extdef->base.flags |= SEC_ALLOC;*/
-        extdef->base.value = 0;
-        extdef->seg = NULL;
-        extdef->base.section = bfd_und_section_ptr;
-        // extdef->base.section = bfd_com_section_ptr;
-
-        strtab_add(tdata->externs, extdef);
-    }
-
-    return true;
-
-    /*External    Ordered by occurrence of EXTDEF, COMDEF,
-    Symbols     LEXTDEF, and LCOMDEF records and symbols
-               within each. Referenced as an external name
-               index (in FIXUP subrecords).
-
-
-     COMDEF, LCOMDEF, EXTDEF, LEXTDEF, and CEXTDEF records
-    NOTE: This group of records is indexed together, so external name
-    index fields in FIXUPP records may refer to any of the record
-    types listed.
-               */
-}
-
-static bool
-i386omf_read_extdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
-    struct i386omf_obj_data *tdata = abfd->tdata.any;
-
-    while (reclen) {
-        struct i386omf_symbol *extdef;
+  switch (comment_class)
+  {
+    case OMF_COMENT_TRANSLATOR:
+      if (tdata->translator)
+        (*_bfd_error_handler)("Translator already set to %s",
+                              tdata->translator);
+      if (reclen && !ISPRINT(bfd_get_8(abfd, p))
+          && bfd_get_8(abfd, p) == reclen - 1)
+      {
+        /* Looks like a length+data style string!
+           XXX The OMF specification wants a string whose length is
+           implicit in reclen, but NASM 0.92 and above seem deliberately
+           to generate a length+data string.  If there appears to be a
+           length byte that happens to match the reclen-derived length,
+           omit it from the translator string.  Remove ISPRINT if any
+           obscure tools turn up whose translator string length byte
+           happens to encode a printable ASCII character.  */
+        p++;
+        reclen--;
+      }
+      tdata->translator = bfd_alloc(abfd, reclen + 1);
+      strncpy(tdata->translator, (char const*) p, reclen);
+      tdata->translator[reclen] = 0;
+      break;
+    case OMF_COMENT_PASS_SEPARATOR: /* We don't care about it. */
+      break;
+    case OMF_COMENT_SYMBOL_TYPE_EXTDEF:
+    case OMF_COMENT_SYMBOL_TYPE_PUBDEF:
+    case OMF_COMENT_STRUCT_MEMBER:
+    case OMF_COMENT_TYPDEF:
+    case OMF_COMENT_ENUM_MEMBER:
+    case OMF_COMENT_SCOPE_BEGIN:
+    case OMF_COMENT_LOCALS:
+    case OMF_COMENT_SCOPE_END:
+    case OMF_COMENT_SOURCE_FILE:
+      /* http://webster.cs.ucr.edu/Page_TechDocs/boa.txt has record formats. */
+      break;
+    case OMF_COMENT_DEPENDENCIES:
+      while (reclen)
+      {
+        struct i386omf_borland_dependency* dep;
         bfd_size_type slen;
 
-        extdef = bfd_alloc(abfd, sizeof(*extdef));
-        if (extdef == NULL)
-            return false;
+        if (reclen < 5)
+        {
+          _bfd_error_handler(_("Truncated Borland dependency list at 0x%lx"),
+                             (unsigned long) (p - tdata->image));
+          break;
+        }
 
-        extdef = (struct i386omf_symbol *) bfd_make_empty_symbol(abfd);
-        abfd->flags |= HAS_SYMS;
+        dep = bfd_alloc(abfd, sizeof(*dep));
+        if (dep == NULL)
+          return false;
 
-        slen = i386omf_read_string(abfd, &extdef->name, p, reclen);
+        /* Some sort of timestamp. */
+        dep->time = bfd_get_16(abfd, p + 0);
+        dep->date = bfd_get_16(abfd, p + 2);
+        p += 4;
+        reclen -= 4;
+
+        /* Source filename. */
+        slen = i386omf_read_string(abfd, &dep->filename, p, reclen);
         if (slen < 1)
-            return false;
+          break;
+
+        strtab_add(tdata->dependencies, dep);
         p += slen;
         reclen -= slen;
+      }
+      break;
+    case OMF_COMENT_COMPILE_PARAMETERS:
+    case OMF_COMENT_MATCHED_TYPE_EXTDEF:
+    case OMF_COMENT_MATCHED_TYPE_PUBDEF:
+    case OMF_COMENT_CLASSDEF:
+    case OMF_COMENT_COVERAGE_OFFSET:
+    case OMF_COMENT_LARGE_SCOPE_BEGIN:
+    case OMF_COMENT_LARGE_LOCALS:
+    case OMF_COMENT_LARGE_SCOPE_END:
+    case OMF_COMENT_MEMBER_FUNCTION:
+    case OMF_COMENT_DEBUG_VERSION:
+    case OMF_COMENT_OPT_FLAGS:
+      /* http://webster.cs.ucr.edu/Page_TechDocs/boa.txt has record formats. */
+      break;
+    case OMF_COMENT_EASY_OMF:
+    case OMF_COMENT_WAT_PROC_MODEL:
+    case OMF_COMENT_LINKER_DIRECTIVE:
+    case OMF_COMENT_LINKER_DIRECTIVE2:
+    case OMF_COMENT_DLL_ENTRY:
+    case OMF_COMENT_WKEXT:
+    case OMF_COMENT_LZEXT:
+    case OMF_COMENT_DEFAULT_LIBRARY:
+    case OMF_COMENT_MEMORY_MODEL:
+    case OMF_COMENT_NEWEXT:
+      break;
+    default:
+      _bfd_error_handler(
+          "Unknown record COMENT type: 0x%02x class: 0x%02x at 0x%04lx",
+          comment_type, comment_class, (unsigned long) (p - tdata->image - 1));
+      bfd_set_error(bfd_error_wrong_format);
+      return false;
+  }
 
-        if (!i386omf_read_index(abfd, &extdef->type_index, &p, &reclen))
-            return false;
-
-        extdef->base.name = extdef->name.data;
-        /* Maybe? extdef->base.flags |= BSF_WEAK; */
-        extdef->base.value = 0;
-        extdef->seg = NULL;
-        extdef->base.section = bfd_und_section_ptr;
-
-        strtab_add(tdata->externs, extdef);
-    }
-
-    return true;
+  return true;
 }
 
+/*
+    i386omf_read_modend
+
+SYNOPSIS
+    static bool i386omf_read_modend(bfd* abfd, bfd_byte const* p, bfd_size_type reclen);
+
+DESCRIPTION
+    Reads and processes an OMF MODEND record, which marks the end of a module.
+    Sets flags for main module and start address. Reports errors for malformed records.
+
+    @param abfd   The BFD file handle.
+    @param p      Pointer to the record data.
+    @param reclen Length of the record data.
+    @return       true on success, false on error.
+*/
 static bool
-i386omf_read_pubdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32) {
-    struct i386omf_obj_data *tdata = abfd->tdata.any;
-    int base_group, base_segment;
-    bfd_vma base_frame = 0;
+i386omf_read_modend(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
+{
+  struct i386omf_obj_data* tdata = abfd->tdata.any;
 
-    if (!i386omf_read_index(abfd, &base_group, &p, &reclen))
-        return false;
-    if (!i386omf_read_index(abfd, &base_segment, &p, &reclen))
-        return false;
-    if (base_segment == OMF_PUBDEF_SEGMENT_ABSOLUTE) {
-        /* Rarely used absolute-address symbol. */
-        if (reclen < 2) {            
-            _bfd_error_handler("Truncated base frame in PUBDEF at 0x%lX",
-                (unsigned long)(p - tdata->image));                                  
-            bfd_set_error(bfd_error_wrong_format);
-            return false;
-        }
-        base_frame = bfd_get_16(abfd, p);
-        p += 2;
-        reclen -= 2;
-        (*_bfd_error_handler)("PUBDEF with base frame 0x%04x",
-                              (unsigned int) base_frame);
-    }
+  if (reclen < OMF_RECORD_HEADER_MODEND)
+  {
+    (*_bfd_error_handler)("Truncated MODEND record.");
+    bfd_set_error(bfd_error_wrong_format);
+    return false;
+  }
 
-    while (reclen) {
-        struct i386omf_symbol *pubdef;
-        bfd_size_type slen;
-        bfd_vma offset;
+  tdata->is_main_module = *p & OMF_MODEND_MAIN_MODULE ? true : false;
+  tdata->has_start_address = *p & OMF_MODEND_START_ADDRESS ? true : false;
 
-        pubdef = (struct i386omf_symbol *) bfd_make_empty_symbol(abfd);
-        abfd->flags |= HAS_SYMS;
+  if (*p & ~(OMF_MODEND_MAIN_MODULE | OMF_MODEND_START_ADDRESS))
+  {
+    (*_bfd_error_handler)("Too much cleverness in MODEND record.");
+    hexdump(p, reclen);
+  }
 
-        slen = i386omf_read_string(abfd, &pubdef->name, p, reclen);
-        if (slen < 1)
-            return false;
-        p += slen;
-        reclen -= slen;
-        if (!i386omf_read_offset(abfd, &offset, &p, &reclen,
-                                 is32 ? I386OMF_OFFSET_SIZE_32 : I386OMF_OFFSET_SIZE_16))
-            return false;
-        if (!i386omf_read_index(abfd, &pubdef->type_index, &p, &reclen))
-            return false;
-
-        pubdef->base.name = pubdef->name.data;
-        pubdef->base.flags |= BSF_GLOBAL;
-        pubdef->base.value = base_frame * 16 + offset;
-        pubdef->seg = strtab_lookup(tdata->segdef, base_segment);
-        if (pubdef->seg)
-            pubdef->base.section = pubdef->seg->asect;
-        else
-            pubdef->base.section = bfd_und_section_ptr;
-        pubdef->group = strtab_lookup(tdata->grpdef, base_group);
-
-        if (base_segment != OMF_PUBDEF_SEGMENT_ABSOLUTE) {
-            /* Normal segment-relative exported symbol. */
-            struct i386omf_segment *seg;
-
-            seg = strtab_lookup(tdata->segdef, base_segment);
-            if (seg == NULL) {
-                (*_bfd_error_handler)("PUBDEF %s in unknown SEGDEF %d",
-                                      pubdef->base.name, base_segment);
-                bfd_set_error(bfd_error_wrong_format);
-                return false;
-            }
-            strtab_add(seg->pubdef, pubdef);
-        } else if (base_group != OMF_GRPDEF_NONE) {
-            /* Rather more weird: relative to a group, but no segment? */
-            struct i386omf_group *group;
-
-            group = strtab_lookup(tdata->grpdef, base_group);
-            if (group == NULL) {
-                _bfd_error_handler("PUBDEF %s in unknown GRPDEF %lu",
-                                      pubdef->base.name, 
-                                      (unsigned long)base_group);
-                bfd_set_error(bfd_error_wrong_format);
-                return false;
-            }
-            strtab_add(group->pubdef, pubdef);
-
-            if (base_frame) {
-                _bfd_error_handler("PUBDEF %s has nonzero base frame 0x%04lx",
-                                    pubdef->base.name, 
-                                    (unsigned long)base_frame);
-            }
-        } else {
-            /* Absolute exported symbol. */
-            strtab_add(tdata->abs_pubdef, pubdef);
-        }
-    }
-
-    return true;
+  return true;
 }
 
+/*
+    i386omf_read_comdef
+
+SYNOPSIS
+    static bool i386omf_read_comdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen);
+
+DESCRIPTION
+    Reads and processes an OMF COMDEF record, which defines communal variables.
+    Adds each symbol to the externs string table. Reports errors for malformed records.
+
+    @param abfd   The BFD file handle.
+    @param p      Pointer to the record data.
+    @param reclen Length of the record data.
+    @return       true on success, false on error.
+*/
+static bool
+i386omf_read_comdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
+{
+  fprintf(stderr, "i386omf_read_comdef: %p\n", p);
+
+  struct i386omf_obj_data* tdata = abfd->tdata.any;
+
+  while (reclen)
+  {
+    struct i386omf_symbol* extdef;
+    bfd_size_type slen, dsize, dnum;
+    int data_segment_type;
+
+    extdef = bfd_alloc(abfd, sizeof(*extdef));
+    if (extdef == NULL)
+      return false;
+
+    extdef = (struct i386omf_symbol*) bfd_make_empty_symbol(abfd);
+    abfd->flags |= HAS_SYMS;
+
+    slen = i386omf_read_string(abfd, &extdef->name, p, reclen);
+    if (slen < 1)
+    {
+      _bfd_error_handler("COMDEF read error: 0x%llx",
+                         (unsigned long long) slen);
+      bfd_set_error(bfd_error_wrong_format);
+      return false;
+    }
+    fprintf(stderr, "COMDEF read: 0%s", extdef->name.data);
+    p += slen;
+    reclen -= slen;
+
+    if (!i386omf_read_index(abfd, &extdef->type_index, &p, &reclen))
+      return false;
+
+    data_segment_type = bfd_get_8(abfd, p++);
+
+    if (data_segment_type == OMF_COMDEF_DATA_SEG_TYPE_FAR)
+    {
+      dnum = bfd_get_8(abfd, p++);
+      reclen -= 1;
+    }
+
+    dsize = bfd_get_8(abfd, p++);
+    reclen -= 2;
+
+    extdef->base.name = extdef->name.data;
+    /* Maybe? extdef->base.flags |= BSF_WEAK; */
+    /* extdef->base.flags |= SEC_ALLOC;*/
+    extdef->base.value = 0;
+    extdef->seg = NULL;
+    extdef->base.section = bfd_und_section_ptr;
+    // extdef->base.section = bfd_com_section_ptr;
+
+    strtab_add(tdata->externs, extdef);
+  }
+
+  return true;
+
+  /*External    Ordered by occurrence of EXTDEF, COMDEF,
+  Symbols     LEXTDEF, and LCOMDEF records and symbols
+             within each. Referenced as an external name
+             index (in FIXUP subrecords).
+
+
+   COMDEF, LCOMDEF, EXTDEF, LEXTDEF, and CEXTDEF records
+  NOTE: This group of records is indexed together, so external name
+  index fields in FIXUPP records may refer to any of the record
+  types listed.
+             */
+}
+
+/*
+    i386omf_read_extdef
+
+SYNOPSIS
+    static bool i386omf_read_extdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen);
+
+DESCRIPTION
+    Reads and processes an OMF EXTDEF record, which defines external symbols.
+    Adds each symbol to the externs string table. Reports errors for malformed records.
+
+    @param abfd   The BFD file handle.
+    @param p      Pointer to the record data.
+    @param reclen Length of the record data.
+    @return       true on success, false on error.
+*/
+static bool
+i386omf_read_extdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
+{
+  struct i386omf_obj_data* tdata = abfd->tdata.any;
+
+  while (reclen)
+  {
+    struct i386omf_symbol* extdef;
+    bfd_size_type slen;
+
+    extdef = bfd_alloc(abfd, sizeof(*extdef));
+    if (extdef == NULL)
+      return false;
+
+    extdef = (struct i386omf_symbol*) bfd_make_empty_symbol(abfd);
+    abfd->flags |= HAS_SYMS;
+
+    slen = i386omf_read_string(abfd, &extdef->name, p, reclen);
+    if (slen < 1)
+      return false;
+    p += slen;
+    reclen -= slen;
+
+    if (!i386omf_read_index(abfd, &extdef->type_index, &p, &reclen))
+      return false;
+
+    extdef->base.name = extdef->name.data;
+    /* Maybe? extdef->base.flags |= BSF_WEAK; */
+    extdef->base.value = 0;
+    extdef->seg = NULL;
+    extdef->base.section = bfd_und_section_ptr;
+
+    strtab_add(tdata->externs, extdef);
+  }
+
+  return true;
+}
+
+/*
+
+    i386omf_read_pubdef
+
+SYNOPSIS
+    static bool i386omf_read_pubdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen, int is32);
+
+DESCRIPTION
+    Reads and processes an OMF PUBDEF record, which defines public (exported) symbols.
+    Handles both absolute and segment-relative symbols. Adds symbols to the appropriate tables.
+    Reports errors for malformed records.
+
+    @param abfd   The BFD file handle.
+    @param p      Pointer to the record data.
+    @param reclen Length of the record data.
+    @param is32   Nonzero if the record uses 32-bit offsets.
+    @return       true on success, false on error.
+*/
+static bool
+i386omf_read_pubdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
+                    int is32)
+{
+  struct i386omf_obj_data* tdata = abfd->tdata.any;
+  int base_group, base_segment;
+  bfd_vma base_frame = 0;
+
+  if (!i386omf_read_index(abfd, &base_group, &p, &reclen))
+    return false;
+  if (!i386omf_read_index(abfd, &base_segment, &p, &reclen))
+    return false;
+  if (base_segment == OMF_PUBDEF_SEGMENT_ABSOLUTE)
+  {
+    /* Rarely used absolute-address symbol. */
+    if (reclen < 2)
+    {
+      _bfd_error_handler("Truncated base frame in PUBDEF at 0x%lX",
+                         (unsigned long) (p - tdata->image));
+      bfd_set_error(bfd_error_wrong_format);
+      return false;
+    }
+    base_frame = bfd_get_16(abfd, p);
+    p += 2;
+    reclen -= 2;
+    (*_bfd_error_handler)("PUBDEF with base frame 0x%04x",
+                          (unsigned int) base_frame);
+  }
+
+  while (reclen)
+  {
+    struct i386omf_symbol* pubdef;
+    bfd_size_type slen;
+    bfd_vma offset;
+
+    pubdef = (struct i386omf_symbol*) bfd_make_empty_symbol(abfd);
+    abfd->flags |= HAS_SYMS;
+
+    slen = i386omf_read_string(abfd, &pubdef->name, p, reclen);
+    if (slen < 1)
+      return false;
+    p += slen;
+    reclen -= slen;
+    if (!i386omf_read_offset(abfd, &offset, &p, &reclen,
+                             is32 ? I386OMF_OFFSET_SIZE_32
+                                  : I386OMF_OFFSET_SIZE_16))
+      return false;
+    if (!i386omf_read_index(abfd, &pubdef->type_index, &p, &reclen))
+      return false;
+
+    pubdef->base.name = pubdef->name.data;
+    pubdef->base.flags |= BSF_GLOBAL;
+    pubdef->base.value = base_frame * 16 + offset;
+    pubdef->seg = strtab_lookup(tdata->segdef, base_segment);
+    if (pubdef->seg)
+    {
+      pubdef->base.section = pubdef->seg->asect;
+    }
+    else
+    {
+      pubdef->base.section = bfd_und_section_ptr;
+    }
+
+    pubdef->group = strtab_lookup(tdata->grpdef, base_group);
+
+    if (base_segment != OMF_PUBDEF_SEGMENT_ABSOLUTE)
+    {
+      /* Normal segment-relative exported symbol. */
+      struct i386omf_segment* seg;
+
+      seg = strtab_lookup(tdata->segdef, base_segment);
+      if (seg == NULL)
+      {
+        (*_bfd_error_handler)("PUBDEF %s in unknown SEGDEF %d",
+                              pubdef->base.name, base_segment);
+        bfd_set_error(bfd_error_wrong_format);
+        return false;
+      }
+      strtab_add(seg->pubdef, pubdef);
+    }
+    else if (base_group != OMF_GRPDEF_NONE)
+    {
+      /* Rather more weird: relative to a group, but no segment? */
+      struct i386omf_group* group;
+
+      group = strtab_lookup(tdata->grpdef, base_group);
+      if (group == NULL)
+      {
+        _bfd_error_handler("PUBDEF %s in unknown GRPDEF %lu", pubdef->base.name,
+                           (unsigned long) base_group);
+        bfd_set_error(bfd_error_wrong_format);
+        return false;
+      }
+      strtab_add(group->pubdef, pubdef);
+
+      if (base_frame)
+      {
+        _bfd_error_handler("PUBDEF %s has nonzero base frame 0x%04lx",
+                           pubdef->base.name, (unsigned long) base_frame);
+      }
+    }
+    else
+    {
+      /* Absolute exported symbol. */
+      strtab_add(tdata->abs_pubdef, pubdef);
+    }
+  }
+
+  return true;
+}
+
+/*
+    i386omf_read_lnames
+
+SYNOPSIS
+    static bool i386omf_read_lnames(bfd *abfd, bfd_byte const *p, bfd_size_type reclen);
+
+DESCRIPTION
+    Reads and processes an OMF LNAMES record, which defines a list of names.
+    Adds each name to the lnames string table. Reports errors for malformed records.
+
+    @param abfd   The BFD file handle.
+    @param p      Pointer to the record data.
+    @param reclen Length of the record data.
+    @return       true on success, false on error.
+*/
 static bool
 i386omf_read_lnames(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
     struct i386omf_obj_data *tdata = abfd->tdata.any;
@@ -924,6 +1165,23 @@ i386omf_read_lnames(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
     return true;
 }
 
+/*
+    i386omf_read_segdef
+
+SYNOPSIS
+    static bool i386omf_read_segdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32);
+
+DESCRIPTION
+    Reads and processes an OMF SEGDEF record, which defines a segment.
+    Creates a segment structure, sets its properties, and adds it to the segment table.
+    Reports errors for malformed records.
+
+    @param abfd   The BFD file handle.
+    @param p      Pointer to the record data.
+    @param reclen Length of the record data.
+    @param is32   Nonzero if the record uses 32-bit offsets.
+    @return       true on success, false on error.
+*/
 static bool
 i386omf_read_segdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32) {
     struct i386omf_obj_data *tdata = abfd->tdata.any;
@@ -951,7 +1209,7 @@ i386omf_read_segdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32
 
             if (reclen < 4) {
                 _bfd_error_handler("SEGDEF at 0x%lx is truncated, only %lu bytes remain.",
-                                      (unsigned long)(p - tdata->image), 
+                                      (unsigned long)(p - tdata->image),
                                       (unsigned long)reclen);
                 bfd_set_error(bfd_error_wrong_format);
                 return false;
@@ -973,10 +1231,10 @@ i386omf_read_segdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32
         if (!i386omf_read_index(abfd, &overlay_index, &p, &reclen))
             return false;
 
-        if (alignment == OMF_SEGDEF_ALIGNMENT_UNDEFINED) {            
+        if (alignment == OMF_SEGDEF_ALIGNMENT_UNDEFINED) {
             _bfd_error_handler("Segment %d (%s) wants alignment = 7",
                                 name_index,
-                                strtab_lookup(tdata->lnames, name_index) ? ((struct counted_string *)strtab_lookup(tdata->lnames, name_index))->data : "<?>");                                  
+                                strtab_lookup(tdata->lnames, name_index) ? ((struct counted_string *)strtab_lookup(tdata->lnames, name_index))->data : "<?>");
             bfd_set_error(bfd_error_wrong_format);
             return false;
         }
@@ -989,9 +1247,9 @@ i386omf_read_segdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32
         seg->class_index = class_index;
         seg->overlay_index = overlay_index;
         _bfd_error_handler(_("SEGDEF name_index:  %x, class_index: %x, overlay_index: %x"),
-                            name_index, 
+                            name_index,
                             class_index,
-                            overlay_index);                            
+                            overlay_index);
         seg->pubdef = strtab_new(abfd);
         if (seg->pubdef == NULL)
             return false;
@@ -1046,6 +1304,21 @@ i386omf_read_segdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32
     return true;
 }
 
+/*
+    i386omf_read_grpdef
+
+SYNOPSIS
+    static bool i386omf_read_grpdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen);
+
+DESCRIPTION
+    Reads and processes an OMF GRPDEF record, which defines a group of segments.
+    Adds the group and its entries to the group table. Reports errors for malformed records.
+
+    @param abfd   The BFD file handle.
+    @param p      Pointer to the record data.
+    @param reclen Length of the record data.
+    @return       true on success, false on error.
+*/
 static bool
 i386omf_read_grpdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
     struct i386omf_obj_data *tdata = abfd->tdata.any;
@@ -1109,6 +1382,25 @@ i386omf_read_grpdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
     return true;
 }
 
+/*
+    i386omf_fix_wrt_frame
+
+SYNOPSIS
+    static bfd_reloc_status_type i386omf_fix_wrt_frame(bfd *abfd, arelent *reloc_entry, asymbol *symbol, void *data, asection *input_section, bfd *output_bfd, char **error_message);
+
+DESCRIPTION
+    Relocation handler for WRT (with respect to) frame fixups.
+    This implementation always returns bfd_reloc_continue.
+
+    @param abfd           The BFD file handle.
+    @param reloc_entry    The relocation entry.
+    @param symbol         The symbol being relocated.
+    @param data           Relocation data.
+    @param input_section  The input section.
+    @param output_bfd     The output BFD.
+    @param error_message  Pointer to error message string.
+    @return               bfd_reloc_continue.
+*/
 static bfd_reloc_status_type
 i386omf_fix_wrt_frame(bfd *abfd ATTRIBUTE_UNUSED,
                       arelent *reloc_entry ATTRIBUTE_UNUSED,
@@ -1120,14 +1412,22 @@ i386omf_fix_wrt_frame(bfd *abfd ATTRIBUTE_UNUSED,
     return bfd_reloc_continue;
 }
 
-/**
- * @brief 
- * 
- * @param abfd - The binary file descriptor.
- * @param p - A pointer to the raw data of the fixup record.
- * @param reclen - The length of the raw data in the fixup record.
- * @return bool 
- */
+/*
+    i386omf_read_fixupp
+
+SYNOPSIS
+    static bool i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen);
+
+DESCRIPTION
+    Reads and processes an OMF FIXUPP record, which describes relocations and fixups.
+    Handles both fixup and thread subrecords, updating relocation tables as needed.
+    Reports errors for malformed records.
+
+    @param abfd   The BFD file handle.
+    @param p      Pointer to the record data.
+    @param reclen Length of the record data.
+    @return       true on success, false on error.
+*/
 static bool
 i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
     struct i386omf_obj_data *tdata = abfd->tdata.any;
@@ -1297,7 +1597,7 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
                     if (!(fixdata & OMF_FIX_DATA_TARGET_THREAD) && !i386omf_read_index(abfd, &target, &p, &reclen))
                         return false;
                     grpdef = strtab_lookup(tdata->grpdef, target);
-                    if (grpdef == NULL) {                        
+                    if (grpdef == NULL) {
                         _bfd_error_handler("FIXUP at 0x%lx wants displacement but none given [%d]",
                             (unsigned long)(q - tdata->image), target);
                         bfd_set_error(bfd_error_wrong_format);
@@ -1330,9 +1630,9 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
             // displacement is provided if P bit is set to 0
             if (!(fixdata & 0x80) >> 0x7) {
                 if (!i386omf_read_offset(abfd, &displacement, &p, &reclen,
-                                         I386OMF_OFFSET_SIZE_16)) {                    
+                                         I386OMF_OFFSET_SIZE_16)) {
                     _bfd_error_handler("FIXUP at 0x%lx wants displacement but none given [%d]",
-                                        (unsigned long)(q - tdata->image), 
+                                        (unsigned long)(q - tdata->image),
                                         target);
                     bfd_set_error(bfd_error_wrong_format);
                     return false;
@@ -1417,6 +1717,23 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
     return true;
 }
 
+/*
+    i386omf_add_section_lidata
+
+SYNOPSIS
+    static bfd_size_type i386omf_add_section_lidata(bfd *abfd, struct bfd_section *asect, bfd_vma *offset, bfd_byte const *p, bfd_size_type reclen);
+
+DESCRIPTION
+    Recursively reads and adds LIDATA (repeated data) blocks to a section's contents.
+    Handles both simple and nested LIDATA blocks. Reports errors for malformed or overflowing data.
+
+    @param abfd   The BFD file handle.
+    @param asect  The section to add data to.
+    @param offset Pointer to the current offset in the section.
+    @param p      Pointer to the record data.
+    @param reclen Length of the record data.
+    @return       Number of bytes consumed, or 0 on error.
+*/
 static bfd_size_type
 i386omf_add_section_lidata(bfd *abfd, struct bfd_section *asect,
                            bfd_vma *offset, bfd_byte const *p,
@@ -1468,7 +1785,7 @@ i386omf_add_section_lidata(bfd *abfd, struct bfd_section *asect,
             if (!subeaten)
                 return 0;
 
-            if (subeaten > reclen) {                
+            if (subeaten > reclen) {
                 _bfd_error_handler("LIDATA at 0x%lx overflows section %s",
                                     (unsigned long)(p - tdata->image),
                                     bfd_section_name(asect));
@@ -1479,7 +1796,7 @@ i386omf_add_section_lidata(bfd *abfd, struct bfd_section *asect,
             p += subeaten;
             reclen -= subeaten;
         }
-        if (reclen)            
+        if (reclen)
             _bfd_error_handler("Leftover LIDATA at 0x%lx in section %s",
                                 (unsigned long)(p - tdata->image),
                                 bfd_section_name(asect));
@@ -1488,6 +1805,24 @@ i386omf_add_section_lidata(bfd *abfd, struct bfd_section *asect,
     return eaten;
 }
 
+/*
+    i386omf_add_section_data
+
+SYNOPSIS
+    static bool i386omf_add_section_data(bfd *abfd, struct bfd_section *asect, bfd_vma offset, bfd_byte const *p, bfd_size_type reclen, int rectype);
+
+DESCRIPTION
+    Adds data to a section, handling both LEDATA and LIDATA records.
+    Allocates memory for the section contents if needed. Reports errors for overflows or allocation failures.
+
+    @param abfd    The BFD file handle.
+    @param asect   The section to add data to.
+    @param offset  Offset in the section to start writing.
+    @param p       Pointer to the record data.
+    @param reclen  Length of the record data.
+    @param rectype Record type (LE/LIDATA).
+    @return        true on success, false on error.
+*/
 static bool
 i386omf_add_section_data(bfd *abfd,
                          struct bfd_section *asect,
@@ -1499,7 +1834,7 @@ i386omf_add_section_data(bfd *abfd,
     /* Lazily allocate memory for section data. */
     if ((asect->flags & SEC_IN_MEMORY) == 0) {
         asect->contents = bfd_zalloc(abfd, asect->size);
-        if (asect->contents == NULL) {            
+        if (asect->contents == NULL) {
             _bfd_error_handler("Out of memory for %s section contents",
                                 bfd_section_name(asect));
             return false;
@@ -1514,10 +1849,10 @@ i386omf_add_section_data(bfd *abfd,
             return false;
     } else {
         /* LEDATA, 0xa2 or 0xa3. */
-        if ((asect->size < offset) || (asect->size - offset < reclen)) {     
+        if ((asect->size < offset) || (asect->size - offset < reclen)) {
             _bfd_error_handler("LEDATA at 0x%lx overflows section %s",
                       (unsigned long)(p - tdata->image),
-                      bfd_section_name(asect));      
+                      bfd_section_name(asect));
             bfd_set_error(bfd_error_wrong_format);
             return false;
         }
@@ -1528,6 +1863,22 @@ i386omf_add_section_data(bfd *abfd,
     return true;
 }
 
+/*
+    i386omf_read_leidata
+
+SYNOPSIS
+    static bool i386omf_read_leidata(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int rectype);
+
+DESCRIPTION
+    Reads and processes an OMF LEDATA or LIDATA record, adding its contents to the appropriate section.
+    Updates the section's flags and handles segment lookup and offset calculation.
+
+    @param abfd    The BFD file handle.
+    @param p       Pointer to the record data.
+    @param reclen  Length of the record data.
+    @param rectype Record type (LE/LIDATA).
+    @return        true on success, false on error.
+*/
 static bool
 i386omf_read_leidata(bfd *abfd, bfd_byte const *p,
                      bfd_size_type reclen, int rectype) {
@@ -1549,7 +1900,7 @@ i386omf_read_leidata(bfd *abfd, bfd_byte const *p,
     segdef = strtab_lookup(tdata->segdef, seg_index);
     if (segdef == NULL) {
         _bfd_error_handler("LEDATA at 0x%lx wants phantom segment [%d]",
-                            p - tdata->image, 
+                            p - tdata->image,
                             seg_index);
         bfd_set_error(bfd_error_wrong_format);
         return false;
@@ -1573,6 +1924,22 @@ i386omf_read_leidata(bfd *abfd, bfd_byte const *p,
     return true;
 }
 
+/*
+    process_record
+
+SYNOPSIS
+    static bool process_record(bfd *abfd, int rectype, bfd_size_type reclen, bfd_byte const *p);
+
+DESCRIPTION
+    Dispatches processing of an OMF record based on its type.
+    Calls the appropriate handler for each record type and reports errors for unknown types.
+
+    @param abfd    The BFD file handle.
+    @param rectype Record type.
+    @param reclen  Length of the record data.
+    @param p       Pointer to the record data.
+    @return        true on success, false on error.
+*/
 static bool
 process_record(bfd *abfd,
                int rectype,
@@ -1642,8 +2009,8 @@ process_record(bfd *abfd,
             record_ok = i386omf_read_comdef(abfd, p, reclen);
             break;
         default:
-            _bfd_error_handler("Unknown RECORD record 0x%02x at 0x%X", 
-                rectype, 
+            _bfd_error_handler("Unknown RECORD record 0x%02x at 0x%X",
+                rectype,
                 (unsigned int)(p - tdata->image));
 
             bfd_set_error(bfd_error_wrong_format);
@@ -1653,6 +2020,19 @@ process_record(bfd *abfd,
     return record_ok;
 }
 
+/*
+    i386omf_setup_tdata
+
+SYNOPSIS
+    static bool i386omf_setup_tdata(bfd *abfd);
+
+DESCRIPTION
+    Allocates and initializes all string tables and data structures needed for OMF processing.
+    Cleans up on failure.
+
+    @param abfd   The BFD file handle.
+    @return       true on success, false on error.
+*/
 static bool
 i386omf_setup_tdata(bfd *abfd) {
     struct i386omf_obj_data *tdata = abfd->tdata.any;
@@ -1683,6 +2063,17 @@ i386omf_setup_tdata(bfd *abfd) {
     return true;
 }
 
+/*
+    i386omf_teardown_tdata
+
+SYNOPSIS
+    static void i386omf_teardown_tdata(bfd *abfd);
+
+DESCRIPTION
+    Frees all string tables and data structures allocated for OMF processing.
+
+    @param abfd   The BFD file handle.
+*/
 static void
 i386omf_teardown_tdata(bfd *abfd) {
     struct i386omf_obj_data *tdata = abfd->tdata.any;
@@ -1718,6 +2109,21 @@ i386omf_teardown_tdata(bfd *abfd) {
   }
 }
 
+/*
+    i386omf_readobject
+
+SYNOPSIS
+    static bool i386omf_readobject(bfd *abfd, bfd_size_type osize, unsigned long *machine);
+
+DESCRIPTION
+    Reads the entire OMF object file into memory and processes all records.
+    Sets up the machine type and validates the file format.
+
+    @param abfd    The BFD file handle.
+    @param osize   Size of the object file.
+    @param machine Pointer to store the detected machine type.
+    @return        true on success, false on error.
+*/
 static bool
 i386omf_readobject (bfd *abfd, bfd_size_type osize, unsigned long *machine)
 {
@@ -1796,6 +2202,19 @@ i386omf_readobject (bfd *abfd, bfd_size_type osize, unsigned long *machine)
     return true;
 }
 
+/*
+    i386omf_object_p
+
+SYNOPSIS
+    static bfd_cleanup i386omf_object_p(bfd *abfd);
+
+DESCRIPTION
+    Checks if the file is a valid i386 OMF object and sets up all necessary data structures.
+    Returns a cleanup function pointer or NULL on error.
+
+    @param abfd   The BFD file handle.
+    @return       Cleanup function pointer, or NULL on error.
+*/
 static bfd_cleanup
 i386omf_object_p (bfd *abfd)
 {
@@ -1839,6 +2258,18 @@ i386omf_object_p (bfd *abfd)
     return _bfd_no_cleanup;
 }
 
+/*
+    i386omf_close_and_cleanup
+
+SYNOPSIS
+    static bool i386omf_close_and_cleanup(bfd *abfd);
+
+DESCRIPTION
+    Cleans up all data structures and memory allocated for the OMF object.
+
+    @param abfd   The BFD file handle.
+    @return       true.
+*/
 static bool
 i386omf_close_and_cleanup(bfd *abfd) {
     i386omf_teardown_tdata(abfd);
@@ -1848,22 +2279,48 @@ i386omf_close_and_cleanup(bfd *abfd) {
 #define i386omf_bfd_free_cached_info  _bfd_generic_bfd_free_cached_info
 #define i386omf_new_section_hook      _bfd_generic_new_section_hook
 
-static bool
-i386omf_get_section_contents(bfd *abfd ATTRIBUTE_UNUSED,
-                             asection *section,
-                             void *location,
-                             file_ptr offset,
-                             bfd_size_type count) {
-    if (section->flags & SEC_IN_MEMORY)
-        memcpy(location, section->contents + offset, count);
-    else
-        memset(location, 0, count);
+/*
+    i386omf_get_section_contents
 
-    return true;
+SYNOPSIS
+    static bool i386omf_get_section_contents(bfd* abfd, asection* section, void* location, file_ptr offset, bfd_size_type count);
+
+DESCRIPTION
+    Copies section contents into the provided buffer, or zeroes the buffer if the section is not in memory.
+
+    @param abfd     The BFD file handle.
+    @param section  The section to read.
+    @param location Buffer to copy data into.
+    @param offset   Offset in the section.
+    @param count    Number of bytes to copy.
+    @return         true.
+*/
+static bool
+i386omf_get_section_contents(bfd* abfd ATTRIBUTE_UNUSED, asection* section,
+                             void* location, file_ptr offset,
+                             bfd_size_type count)
+{
+  if (section->flags & SEC_IN_MEMORY)
+    memcpy(location, section->contents + offset, count);
+  else
+    memset(location, 0, count);
+
+  return true;
 }
 
-/* Return the amount of memory needed to read the symbol table.  */
 
+/*
+    i386omf_get_symtab_upper_bound
+
+SYNOPSIS
+    static long i386omf_get_symtab_upper_bound(bfd *abfd);
+
+DESCRIPTION
+    Returns the amount of memory needed to read the symbol table.
+
+    @param abfd   The BFD file handle.
+    @return       Size in bytes required for the symbol table.
+*/
 static long
 i386omf_get_symtab_upper_bound(bfd *abfd) {
     struct i386omf_obj_data *tdata = abfd->tdata.any;
@@ -1879,7 +2336,20 @@ i386omf_get_symtab_upper_bound(bfd *abfd) {
 }
 
 /* Return the symbol table.  */
+/*
+    i386omf_canonicalize_symtab
 
+SYNOPSIS
+    static long i386omf_canonicalize_symtab(bfd *abfd, asymbol **alocation);
+
+DESCRIPTION
+    Fills the provided array with pointers to all symbols in the object file.
+    Returns the number of symbols found.
+
+    @param abfd      The BFD file handle.
+    @param alocation Array to fill with symbol pointers.
+    @return          Number of symbols.
+*/
 static long
 i386omf_canonicalize_symtab(bfd *abfd, asymbol **alocation) {
     struct i386omf_obj_data *tdata = abfd->tdata.any;
@@ -1916,6 +2386,19 @@ i386omf_canonicalize_symtab(bfd *abfd, asymbol **alocation) {
 #define i386omf_bfd_set_private_flags \
     _bfd_generic_bfd_set_private_flags
 
+/*
+    i386omf_bfd_print_private_bfd_data
+
+SYNOPSIS
+    static bool i386omf_bfd_print_private_bfd_data(bfd *abfd, void *farg);
+
+DESCRIPTION
+    Prints private OMF-specific data structures to the provided file stream.
+
+    @param abfd   The BFD file handle.
+    @param farg   File stream to print to.
+    @return       false.
+*/
 static bool
 i386omf_bfd_print_private_bfd_data(bfd *abfd, void *farg) {
     struct i386omf_obj_data *tdata = abfd->tdata.any;
@@ -1991,6 +2474,18 @@ i386omf_bfd_print_private_bfd_data(bfd *abfd, void *farg) {
     return false;
 }
 
+/*
+    i386omf_make_empty_symbol
+
+SYNOPSIS
+    static asymbol *i386omf_make_empty_symbol(bfd *abfd);
+
+DESCRIPTION
+    Allocates and returns a new, zero-initialized OMF symbol structure.
+
+    @param abfd   The BFD file handle.
+    @return       Pointer to the new symbol.
+*/
 static asymbol *
 i386omf_make_empty_symbol(bfd *abfd) {
     bfd_size_type amt = sizeof(struct i386omf_symbol);
@@ -2000,6 +2495,20 @@ i386omf_make_empty_symbol(bfd *abfd) {
     return new;
 }
 
+/*
+    i386omf_print_symbol
+
+SYNOPSIS
+    static void i386omf_print_symbol(bfd *abfd, void *afile, struct bfd_symbol *sym, bfd_print_symbol_type how);
+
+DESCRIPTION
+    Prints information about a symbol in various formats, depending on the 'how' parameter.
+
+    @param abfd   The BFD file handle.
+    @param afile  File stream to print to.
+    @param sym    Symbol to print.
+    @param how    Print format selector.
+*/
 static void
 i386omf_print_symbol(bfd *abfd, void *afile, struct bfd_symbol *sym, bfd_print_symbol_type how) {
     struct i386omf_obj_data *tdata = abfd->tdata.any;
@@ -2032,7 +2541,19 @@ i386omf_print_symbol(bfd *abfd, void *afile, struct bfd_symbol *sym, bfd_print_s
 }
 
 /* Get information about a symbol.  */
+/*
+    i386omf_get_symbol_info
 
+SYNOPSIS
+    static void i386omf_get_symbol_info(bfd *ignore_abfd ATTRIBUTE_UNUSED, asymbol *symbol, symbol_info *ret);
+
+DESCRIPTION
+    Fills a symbol_info structure with information about the given symbol.
+
+    @param ignore_abfd Ignored BFD file handle.
+    @param symbol      Symbol to query.
+    @param ret         Structure to fill with symbol information.
+*/
 static void
 i386omf_get_symbol_info(bfd *ignore_abfd ATTRIBUTE_UNUSED,
                         asymbol *symbol,
@@ -2049,6 +2570,19 @@ i386omf_get_symbol_info(bfd *ignore_abfd ATTRIBUTE_UNUSED,
 #define i386omf_minisymbol_to_symbol       _bfd_generic_minisymbol_to_symbol
 #define i386omf_bfd_is_target_special_symbol _bfd_bool_bfd_asymbol_false
 
+/*
+    i386omf_get_reloc_upper_bound
+
+SYNOPSIS
+    static long i386omf_get_reloc_upper_bound(bfd *abfd ATTRIBUTE_UNUSED, asection *sec);
+
+DESCRIPTION
+    Returns the amount of memory needed to read the relocation table for a section.
+
+    @param abfd   The BFD file handle (unused).
+    @param sec    Section to query.
+    @return       Size in bytes required for the relocation table.
+*/
 static long
 i386omf_get_reloc_upper_bound(bfd *abfd ATTRIBUTE_UNUSED, asection *sec) {
     struct i386omf_segment *seg = sec->used_by_bfd;
@@ -2057,6 +2591,22 @@ i386omf_get_reloc_upper_bound(bfd *abfd ATTRIBUTE_UNUSED, asection *sec) {
     return n * sizeof(arelent * );
 }
 
+/*
+    i386omf_canonicalize_reloc
+
+SYNOPSIS
+    static long i386omf_canonicalize_reloc(bfd *abfd ATTRIBUTE_UNUSED, asection *sec, arelent **relptr, asymbol **symbols ATTRIBUTE_UNUSED);
+
+DESCRIPTION
+    Fills the provided array with pointers to all relocation entries for a section.
+    Returns the number of relocations found.
+
+    @param abfd     The BFD file handle (unused).
+    @param sec      Section to query.
+    @param relptr   Array to fill with relocation pointers.
+    @param symbols  Array of symbols (unused).
+    @return         Number of relocations.
+*/
 static long
 i386omf_canonicalize_reloc(bfd *abfd ATTRIBUTE_UNUSED,
                            asection *sec,
@@ -2156,9 +2706,10 @@ binary_set_section_contents(bfd *abfd,
 /* No space is required for header information.  */
 
 static int
-binary_sizeof_headers(bfd *abfd ATTRIBUTE_UNUSED,
-                      struct bfd_link_info *info ATTRIBUTE_UNUSED) {
-    return 0;
+binary_sizeof_headers(bfd* abfd ATTRIBUTE_UNUSED,
+                      struct bfd_link_info* info ATTRIBUTE_UNUSED)
+{
+  return 0;
 }
 
 #define binary_bfd_get_relocated_section_contents  bfd_generic_get_relocated_section_contents
@@ -2189,57 +2740,78 @@ binary_sizeof_headers(bfd *abfd ATTRIBUTE_UNUSED,
   _bfd_nosymbols_get_symbol_version_string
 #define binary_bfd_link_check_relocs              _bfd_generic_link_check_relocs
 
-const bfd_target i386_omf_vec =
-{
-  "i386omf",			/* name */
-  bfd_target_omf_flavour,	/* flavour */
-  BFD_ENDIAN_LITTLE,		/* byteorder */
-  BFD_ENDIAN_LITTLE,		/* header_byteorder */
-  (HAS_RELOC | HAS_SYMS | HAS_LOCALS), /* object_flags */
-  (SEC_ALLOC | SEC_LOAD | SEC_LOAD | SEC_RELOC | SEC_READONLY
-   | SEC_CODE | SEC_DATA | SEC_ROM | SEC_HAS_CONTENTS
-   | SEC_IN_MEMORY | SEC_GROUP), /* section_flags */
-  0,				/* symbol_leading_char */
-  ' ',				/* ar_pad_char */
-  16,				/* ar_max_namelen */
-  255,				/* match priority.  */
-  TARGET_KEEP_UNUSED_SECTION_SYMBOLS, /* keep unused section symbols.  */
-  bfd_getl64, bfd_getl_signed_64, bfd_putl64,
-  bfd_getl32, bfd_getl_signed_32, bfd_putl32,
-  bfd_getl16, bfd_getl_signed_16, bfd_putl16,	/* data */
-  bfd_getl64, bfd_getl_signed_64, bfd_putl64,
-  bfd_getl32, bfd_getl_signed_32, bfd_putl32,
-  bfd_getl16, bfd_getl_signed_16, bfd_putl16,	/* hdrs */
-  {				/* bfd_check_format */
-        _bfd_dummy_target,
-        i386omf_object_p,
-        _bfd_dummy_target,
-        _bfd_dummy_target,
-  },
-  {				/* bfd_set_format */
-          _bfd_bool_bfd_false_error,
-          binary_mkobject,
-          _bfd_bool_bfd_false_error,
-          _bfd_bool_bfd_false_error,
-  },
-  {				/* bfd_write_contents */
-          _bfd_bool_bfd_false_error,
-          i386omf_write_object_contents,
-          _bfd_bool_bfd_false_error,
-          _bfd_bool_bfd_false_error,
-  },
+const bfd_target i386_omf_vec = {
+    "i386omf",                           /* name (const char *name) */
+    bfd_target_omf_flavour,              /* flavour (enum bfd_flavour flavour) */
+    BFD_ENDIAN_LITTLE,                   /* byteorder (enum bfd_endian byteorder) */
+    BFD_ENDIAN_LITTLE,                   /* header_byteorder (enum bfd_endian header_byteorder) */
+    (HAS_RELOC | HAS_SYMS | HAS_LOCALS), /* object_flags (flagword object_flags) */
+    (SEC_ALLOC | SEC_LOAD | SEC_LOAD | SEC_RELOC | SEC_READONLY | SEC_CODE
+     | SEC_DATA | SEC_ROM | SEC_HAS_CONTENTS | SEC_IN_MEMORY
+     | SEC_GROUP),                      /* section_flags (flagword section_flags) */
+    0,                                  /* symbol_leading_char (char symbol_leading_char) */
+    ' ',                                /* ar_pad_char (char ar_pad_char) */
+    16,                                 /* ar_max_namelen (unsigned char ar_max_namelen) */
+    255,                                /* match_priority (unsigned char match_priority) */
+    TARGET_KEEP_UNUSED_SECTION_SYMBOLS, /* keep_unused_section_symbols (bool keep_unused_section_symbols) */
 
-  BFD_JUMP_TABLE_GENERIC (i386omf),
-  BFD_JUMP_TABLE_COPY (_bfd_generic),
-  BFD_JUMP_TABLE_CORE (_bfd_nocore),
-  BFD_JUMP_TABLE_ARCHIVE (_bfd_noarchive),
-  BFD_JUMP_TABLE_SYMBOLS (i386omf),
-  BFD_JUMP_TABLE_RELOCS (i386omf),
-  BFD_JUMP_TABLE_WRITE (binary),
-  BFD_JUMP_TABLE_LINK (binary),
-  BFD_JUMP_TABLE_DYNAMIC (_bfd_nodynamic),
+    /* Data byte swapping functions (for user section data) */
+    bfd_getl64,         /* bfd_getx64 (uint64_t (*bfd_getx64)(const void *)) */
+    bfd_getl_signed_64, /* bfd_getx_signed_64 (int64_t (*bfd_getx_signed_64)(const void *)) */
+    bfd_putl64,         /* bfd_putx64 (void (*bfd_putx64)(uint64_t, void *)) */
+    bfd_getl32,         /* bfd_getx32 (bfd_vma (*bfd_getx32)(const void *)) */
+    bfd_getl_signed_32, /* bfd_getx_signed_32 (bfd_signed_vma (*bfd_getx_signed_32)(const void *)) */
+    bfd_putl32,         /* bfd_putx32 (void (*bfd_putx32)(bfd_vma, void *)) */
+    bfd_getl16,         /* bfd_getx16 (bfd_vma (*bfd_getx16)(const void *)) */
+    bfd_getl_signed_16, /* bfd_getx_signed_16 (bfd_signed_vma (*bfd_getx_signed_16)(const void *)) */
+    bfd_putl16,         /* bfd_putx16 (void (*bfd_putx16)(bfd_vma, void *)) */
 
-                NULL,
+    /* Header byte swapping functions (for file header data) */
+    bfd_getl64,         /* bfd_h_getx64 (uint64_t (*bfd_h_getx64)(const void *)) */
+    bfd_getl_signed_64, /* bfd_h_getx_signed_64 (int64_t (*bfd_h_getx_signed_64)(const void *)) */
+    bfd_putl64,         /* bfd_h_putx64 (void (*bfd_h_putx64)(uint64_t, void *)) */
+    bfd_getl32,         /* bfd_h_getx32 (bfd_vma (*bfd_h_getx32)(const void *)) */
+    bfd_getl_signed_32, /* bfd_h_getx_signed_32 (bfd_signed_vma (*bfd_h_getx_signed_32)(const void *)) */
+    bfd_putl32,         /* bfd_h_putx32 (void (*bfd_h_putx32)(bfd_vma, void *)) */
+    bfd_getl16,         /* bfd_h_getx16 (bfd_vma (*bfd_h_getx16)(const void *)) */
+    bfd_getl_signed_16, /* bfd_h_getx_signed_16 (bfd_signed_vma (*bfd_h_getx_signed_16)(const void *)) */
+    bfd_putl16,         /* bfd_h_putx16 (void (*bfd_h_putx16)(bfd_vma, void *)) */
 
-                NULL
-        };
+    /* Format checkers: _bfd_check_format (bool (*_bfd_check_format[4])(bfd *)) */
+    {
+        _bfd_dummy_target,      /* unknown format */
+        i386omf_object_p,       /* object file format checker */
+        _bfd_dummy_target,      /* archive format checker */
+        _bfd_dummy_target,      /* core format checker */
+    },
+
+    /* Format setters: _bfd_set_format (bool (*_bfd_set_format[4])(bfd *)) */
+    {
+        _bfd_bool_bfd_false_error, /* unknown format */
+        binary_mkobject,           /* object file format setter */
+        _bfd_bool_bfd_false_error, /* archive format setter */
+        _bfd_bool_bfd_false_error, /* core format setter */
+    },
+
+    /* Format writers: _bfd_write_contents (bool (*_bfd_write_contents[4])(bfd *)) */
+    {
+        _bfd_bool_bfd_false_error,     /* unknown format */
+        i386omf_write_object_contents, /* object file writer */
+        _bfd_bool_bfd_false_error,     /* archive writer */
+        _bfd_bool_bfd_false_error,     /* core writer */
+    },
+
+    /* Jump tables for various BFD operations */
+    BFD_JUMP_TABLE_GENERIC(i386omf),    /* _close_and_cleanup, _bfd_free_cached_info, _new_section_hook, _bfd_get_section_contents */
+    BFD_JUMP_TABLE_COPY(_bfd_generic),  /* _bfd_copy_private_bfd_data, _bfd_merge_private_bfd_data, ... */
+    BFD_JUMP_TABLE_CORE(_bfd_nocore),   /* _core_file_failing_command, ... */
+    BFD_JUMP_TABLE_ARCHIVE(_bfd_noarchive), /* _bfd_slurp_armap, ... */
+    BFD_JUMP_TABLE_SYMBOLS(i386omf),    /* _bfd_get_symtab_upper_bound, _bfd_canonicalize_symtab, ... */
+    BFD_JUMP_TABLE_RELOCS(i386omf),     /* _get_reloc_upper_bound, _bfd_canonicalize_reloc, ... */
+    BFD_JUMP_TABLE_WRITE(binary),       /* _bfd_set_arch_mach, _bfd_set_section_contents */
+    BFD_JUMP_TABLE_LINK(binary),        /* _bfd_sizeof_headers, _bfd_get_relocated_section_contents, ... */
+    BFD_JUMP_TABLE_DYNAMIC(_bfd_nodynamic), /* dynamic symbol/reloc routines */
+
+    NULL, /* alternative_target (const struct bfd_target *alternative_target) */
+    NULL  /* backend_data (const void *backend_data) */
+};
