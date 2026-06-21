@@ -265,6 +265,7 @@ struct i386omf_segment
   int name_index;
   int class_index;
   int overlay_index;
+  bfd_vma last_data_offset;     /* §7: section-relative offset of most recent LE/LIDATA record */
 };
 
 struct i386omf_group_entry
@@ -1720,7 +1721,7 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
             /* §7 (BFD relocation generation): Build arelent from decoded fixup.
                howto selected by (location, mode=M bit).  */
             target_relent->base.sym_ptr_ptr = &target_relent->symbol;
-            target_relent->base.address = offset;
+            target_relent->base.address = tdata->last_leidata->last_data_offset + offset;
             howto = &(subrec & OMF_FIXUP_SEGREL                     // M bit: 1=segrel, 0=self-rel
                       ? howto_table_i386omf_segrel
                       : howto_table_i386omf_pcrel)[location];
@@ -1748,7 +1749,7 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
                         return false;
                     frame_relent->symbol = frame_sym ? &frame_sym->base : NULL;
                     frame_relent->base.sym_ptr_ptr = &frame_relent->symbol;
-                    frame_relent->base.address = offset;
+                    frame_relent->base.address = tdata->last_leidata->last_data_offset + offset;
                     frame_relent->base.addend = 0;
                     frame_relent->base.howto = &howto_wrt_segdef;
                     strtab_add(tdata->last_leidata->relocs, frame_relent);
@@ -2003,6 +2004,8 @@ i386omf_read_leidata(bfd *abfd, bfd_byte const *p,
     if (!i386omf_read_offset(abfd, &offset, &p, &reclen,
                              rectype & 1 ? I386OMF_OFFSET_SIZE_32 : I386OMF_OFFSET_SIZE_16))
         return false;
+
+    segdef->last_data_offset = offset;
 
     if (!i386omf_add_section_data(abfd, segdef->asect, offset,
                                   p, reclen, rectype))
