@@ -920,11 +920,11 @@ i386omf_read_comdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
 
     if (data_segment_type == OMF_COMDEF_DATA_SEG_TYPE_FAR)
     {
-      bfd_get_8(abfd, p++);
+      p++;
       reclen -= 1;
     }
 
-    bfd_get_8(abfd, p++);
+    p++;
     reclen -= 2;
 
     extdef->base.name = extdef->name.data;
@@ -1213,9 +1213,6 @@ i386omf_read_segdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32
 
         if (alignment == OMF_SEGDEF_ALIGNMENT_ABSOLUTE) {
             /* Absolute segment; get frame number and offset. */
-            bfd_get_16(abfd, p + 1);
-            bfd_get_8(abfd, p + 3);
-
             if (reclen < 4) {
                 _bfd_error_handler("SEGDEF at 0x%lx is truncated, only %lu bytes remain.",
                                       (unsigned long)(p - tdata->image),
