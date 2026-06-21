@@ -1825,6 +1825,13 @@ i386omf_read_grpdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
     if (!i386omf_read_index(abfd, &grpdef->name_index, &p, &reclen))
         return false;
 
+    if (grpdef->name_index == 0)
+    {
+        (*_bfd_error_handler)("GRPDEF has zero group name index.");
+        bfd_set_error(bfd_error_wrong_format);
+        return false;
+    }
+
     grpdef->entries = strtab_new(abfd);
     if (grpdef->entries == NULL)
         return false;

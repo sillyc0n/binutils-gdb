@@ -976,6 +976,33 @@ gen_error_f3_frame (const char *outdir)
   printf ("  wrote %s (%d bytes)\n", path, ob.len);
 }
 
+/* error_grpdef_zero_index.o — GRPDEF with zero group name index.  */
+static void
+gen_error_grpdef_zero_index (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "error_grpdef_zero_index");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 1, 16, 5, 2, 1, 0, 0);
+
+  uint8_t payload[1] = { 0x00 }; /* zero group name index */
+  uint8_t rec[16];
+  int n = omf_record (rec, 0x9a, payload, 1);
+  ob_write (&ob, rec, n);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/error_grpdef_zero_index.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
 /* ------------------------------------------------------------------ */
 /*  COMDEF test objects                                                 */
 /* ------------------------------------------------------------------ */
@@ -1128,6 +1155,7 @@ main (int argc, char **argv)
   gen_error_undefined_thread (outdir);
   gen_error_bad_location (outdir);
   gen_error_f3_frame (outdir);
+  gen_error_grpdef_zero_index (outdir);
   gen_comdef (outdir);
   gen_comdat (outdir);
 

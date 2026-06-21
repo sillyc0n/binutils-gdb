@@ -244,6 +244,21 @@ if { [regexp "invalid explicit frame method F3" $got] } {
     fail $test
 }
 
+set test "OMF error: GRPDEF zero name index"
+set got [binutils_run $OBJDUMP "-x tmpdir/error_grpdef_zero_index.o"]
+if { [regexp "file format not recognized" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF error: GRPDEF zero name index message"
+if { [regexp "zero group name index" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
 # -----------------------------------------------------------------------
 #  COMDEF tests
 # -----------------------------------------------------------------------
