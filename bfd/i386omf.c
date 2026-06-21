@@ -882,7 +882,7 @@ i386omf_read_comdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
   while (reclen)
   {
     struct i386omf_symbol* extdef;
-    bfd_size_type slen, dsize, dnum;
+    bfd_size_type slen;
     int data_segment_type;
 
     extdef = bfd_alloc(abfd, sizeof(*extdef));
@@ -911,11 +911,11 @@ i386omf_read_comdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
 
     if (data_segment_type == OMF_COMDEF_DATA_SEG_TYPE_FAR)
     {
-      dnum = bfd_get_8(abfd, p++);
+      bfd_get_8(abfd, p++);
       reclen -= 1;
     }
 
-    dsize = bfd_get_8(abfd, p++);
+    bfd_get_8(abfd, p++);
     reclen -= 2;
 
     extdef->base.name = extdef->name.data;
@@ -1194,7 +1194,7 @@ i386omf_read_segdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32
         struct i386omf_segment *seg;
         struct i386omf_symbol *seg_sym;
         char const *segment_name;
-        bfd_vma absolute_addr, seglen;
+        bfd_vma seglen;
         bfd_byte attr;
 
         attr = *p;
@@ -1204,8 +1204,8 @@ i386omf_read_segdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32
 
         if (alignment == OMF_SEGDEF_ALIGNMENT_ABSOLUTE) {
             /* Absolute segment; get frame number and offset. */
-            absolute_addr = (bfd_vma) bfd_get_16(abfd, p + 1) * 16;
-            absolute_addr += bfd_get_8(abfd, p + 3);
+            bfd_get_16(abfd, p + 1);
+            bfd_get_8(abfd, p + 3);
 
             if (reclen < 4) {
                 _bfd_error_handler("SEGDEF at 0x%lx is truncated, only %lu bytes remain.",
@@ -2383,96 +2383,7 @@ i386omf_canonicalize_symtab(bfd *abfd, asymbol **alocation) {
     _bfd_generic_bfd_copy_private_symbol_data
 #define i386omf_bfd_copy_private_header_data \
     _bfd_generic_bfd_copy_private_header_data
-#define i386omf_bfd_set_private_flags \
-    _bfd_generic_bfd_set_private_flags
 
-/*
-    i386omf_bfd_print_private_bfd_data
-
-SYNOPSIS
-    static bool i386omf_bfd_print_private_bfd_data(bfd *abfd, void *farg);
-
-DESCRIPTION
-    Prints private OMF-specific data structures to the provided file stream.
-
-    @param abfd   The BFD file handle.
-    @param farg   File stream to print to.
-    @return       false.
-*/
-static bool
-i386omf_bfd_print_private_bfd_data(bfd *abfd, void *farg) {
-    struct i386omf_obj_data *tdata = abfd->tdata.any;
-    struct i386omf_segment *seg;
-    struct i386omf_group *grp;
-    FILE *f = farg;
-    struct counted_string const *s;
-    int i;
-
-    fprintf(f, "\nModule name: %s\n", tdata->module_name.data);
-    if (tdata->is_main_module) {
-        fprintf(f, "Main module\n");
-    }
-    if (tdata->has_start_address) {
-        fprintf(f, "Has start address\n");
-    }
-    if (tdata->translator)
-        fprintf(f, "Translator: %s\n", tdata->translator);
-    if (strtab_size(tdata->dependencies)) {
-        struct i386omf_borland_dependency *dep;
-
-        fprintf(f, "Dependencies:\n");
-        for (i = 0; (dep = strtab_lookup(tdata->dependencies, i)); i++) {
-            fprintf(f, "  %04d-%02d-%02d %02d:%02d:%02d %s\n",
-                    ((dep->date >> OMF_MSDOS_DATE_YEAR_SHIFT)
-                     & W2M(OMF_MSDOS_DATE_YEAR_WIDTH)) + 1980,
-                    (dep->date >> OMF_MSDOS_DATE_MONTH_SHIFT)
-                    & W2M(OMF_MSDOS_DATE_MONTH_WIDTH),
-                    dep->date & W2M(OMF_MSDOS_DATE_DAY_WIDTH),
-                    (dep->time >> OMF_MSDOS_TIME_HOUR_SHIFT)
-                    & W2M(OMF_MSDOS_TIME_HOUR_WIDTH),
-                    (dep->time >> OMF_MSDOS_TIME_MINUTE_SHIFT)
-                    & W2M(OMF_MSDOS_TIME_MINUTE_WIDTH),
-                    (dep->time & W2M(OMF_MSDOS_TIME_2SECOND_WIDTH)) * 2,
-                    dep->filename.data);
-        }
-    }
-    fprintf(f, "LNAMES:\n");
-    for (i = OMF_LNAMES_NONE + 1; (s = strtab_lookup(tdata->lnames, i)); i++) {
-        fprintf(f, "  %d %s\n", i, s->data);
-    }
-    fprintf(f, "SEGDEF:\n");
-    for (i = OMF_SEGDEF_NONE + 1; (seg = strtab_lookup(tdata->segdef, i)); i++) {
-        fprintf(f, "  %s (%d)\n",
-                i386omf_lookup_string(tdata->lnames, seg->name_index,
-                                      "UNNAMED"),
-                seg->name_index);
-    }
-    fprintf(f, "GRPDEF:\n");
-    for (i = OMF_GRPDEF_NONE + 1; (grp = strtab_lookup(tdata->grpdef, i)); i++) {
-        struct i386omf_group_entry *entry;
-        int j;
-
-        fprintf(f, "  %s (%d)",
-                i386omf_lookup_string(tdata->lnames, grp->name_index,
-                                      "UNNAMED"),
-                grp->name_index);
-
-        for (j = 0; (entry = strtab_lookup(grp->entries, j)); j++) {
-            switch (entry->type) {
-                case GRPDEF_ENTRY_SEGDEF:
-                    fprintf(f, " (%d)", entry->u.segdef);
-                    break;
-                default:
-                    fprintf(f, " ??? (type=0x%02x)", entry->type);
-                    break;
-            }
-        }
-
-        fprintf(f, "\n");
-    }
-
-    return false;
-}
 
 /*
     i386omf_make_empty_symbol
@@ -2732,7 +2643,7 @@ binary_sizeof_headers(bfd* abfd ATTRIBUTE_UNUSED,
 #define binary_bfd_lookup_section_flags            bfd_generic_lookup_section_flags
 #define binary_bfd_link_hide_symbol               _bfd_generic_link_hide_symbol
 #define binary_bfd_group_name                      bfd_generic_group_name
-#define i386omf_set_reloc                         _bfd_norelocs_set_reloc
+#define i386omf_finalize_section_relocs            _bfd_norelocs_finalize_section_relocs
 #define binary_bfd_define_start_stop               bfd_generic_define_start_stop
 #define i386omf_find_line                         _bfd_nosymbols_find_line
 #define i386omf_find_nearest_line_with_alt        _bfd_nosymbols_find_nearest_line_with_alt
@@ -2754,6 +2665,7 @@ const bfd_target i386_omf_vec = {
     16,                                 /* ar_max_namelen (unsigned char ar_max_namelen) */
     255,                                /* match_priority (unsigned char match_priority) */
     TARGET_KEEP_UNUSED_SECTION_SYMBOLS, /* keep_unused_section_symbols (bool keep_unused_section_symbols) */
+    TARGET_MERGE_SECTIONS,             /* merge_sections (bool merge_sections) */
 
     /* Data byte swapping functions (for user section data) */
     bfd_getl64,         /* bfd_getx64 (uint64_t (*bfd_getx64)(const void *)) */
