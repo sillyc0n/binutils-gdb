@@ -2657,7 +2657,7 @@ const bfd_target i386_omf_vec = {
     BFD_ENDIAN_LITTLE,                   /* byteorder (enum bfd_endian byteorder) */
     BFD_ENDIAN_LITTLE,                   /* header_byteorder (enum bfd_endian header_byteorder) */
     (HAS_RELOC | HAS_SYMS | HAS_LOCALS), /* object_flags (flagword object_flags) */
-    (SEC_ALLOC | SEC_LOAD | SEC_LOAD | SEC_RELOC | SEC_READONLY | SEC_CODE
+    (SEC_ALLOC | SEC_LOAD | SEC_RELOC | SEC_READONLY | SEC_CODE
      | SEC_DATA | SEC_ROM | SEC_HAS_CONTENTS | SEC_IN_MEMORY
      | SEC_GROUP),                      /* section_flags (flagword section_flags) */
     0,                                  /* symbol_leading_char (char symbol_leading_char) */
