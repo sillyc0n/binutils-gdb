@@ -164,37 +164,50 @@ omf_init_debug (void)
 #define OMF_SEGDEF_COMBINATION_PUBLIC_7        7
 #define OMF_SEGDEF_COMBINATION_PUBLIC          OMF_SEGDEF_COMBINATION_PUBLIC_2
 
-#define OMF_FIXUPP_FIXUP               0x80
-#define OMF_FIXUPP_TARGET_SEGDEF       0        // segment index and target displacement
-#define OMF_FIXUPP_TARGET_GRPDEF       1        // group index and target displacement
-#define OMF_FIXUPP_TARGET_EXTDEF       2        // external index and target displacement
-#define OMF_FIXUPP_TARGET_EXPLICIT     3        // explicit frame number
-#define OMF_FIXUPP_TARGET_NODISP       4        // has displacement if bit set
+/* FIXUPP record constants — see fixupp_record_spec.md for full spec.
+   §4.3: Fix Data byte layout: F(1) Frame(3) T(1) P(1) Targt(2). */
+/* Subrecord type detection: high bit of first subrecord byte.  §2.  */
+#define OMF_FIXUPP_FIXUP               0x80     /* 1000 0000 — FIXUP vs THREAD */
 
-#define OMF_FIXUPP_FRAME_SEGDEF        0
-#define OMF_FIXUPP_FRAME_GRPDEF        1
-#define OMF_FIXUPP_FRAME_EXTDEF        2
-#define OMF_FIXUPP_FRAME_EXPLICIT      3
-#define OMF_FIXUPP_FRAME_LEIDATA       4
-#define OMF_FIXUPP_FRAME_TARGET        5
+/* TARGET method constants.  §3.2 TARGET methods (D=0).  */
+#define OMF_FIXUPP_TARGET_SEGDEF       0        /* T0: segment index + displacement */
+#define OMF_FIXUPP_TARGET_GRPDEF       1        /* T1: group index + displacement */
+#define OMF_FIXUPP_TARGET_EXTDEF       2        /* T2: external index + displacement */
+#define OMF_FIXUPP_TARGET_EXPLICIT     3        /* T3: explicit frame number (16-bit) */
+#define OMF_FIXUPP_TARGET_NODISP       4        /* mask bit: when set, displacement=0 */
 
-#define OMF_FIXUP_SEGREL               0x40     // 0100 0000
-#define OMF_FIXUP_LOCATION_MASK        0x3c     // 0011 1100
+/* FRAME method constants.  §3.2 FRAME methods (D=1).  */
+#define OMF_FIXUPP_FRAME_SEGDEF        0        /* F0: SEGDEF index */
+#define OMF_FIXUPP_FRAME_GRPDEF        1        /* F1: GRPDEF index */
+#define OMF_FIXUPP_FRAME_EXTDEF        2        /* F2: EXTDEF index */
+#define OMF_FIXUPP_FRAME_EXPLICIT      3        /* F3: explicit frame — invalid/unsupported */
+#define OMF_FIXUPP_FRAME_LEIDATA       4        /* F4: frame = preceding LEDATA's segment */
+#define OMF_FIXUPP_FRAME_TARGET        5        /* F5: frame = TARGET's segment/group/external */
+
+/* §4.2: Locat field byte0 bit assignments.  Byte0 carries the HIGH-order bits.  */
+#define OMF_FIXUP_SEGREL               0x40     /* bit 6: M (1=segment-relative, 0=self-relative) */
+#define OMF_FIXUP_LOCATION_MASK        0x3c     /* bits 5-2: Location (4 bits) */
 #define OMF_FIXUP_LOCATION_SHIFT       2
-#define OMF_FIX_DATA_FRAME_THREAD      0x80     // 1000 0000
-#define OMF_FIX_DATA_FRAME_MASK        0x70     // 0111 0000
+
+/* §4.3: Fix Data byte bit masks.  */
+#define OMF_FIX_DATA_FRAME_THREAD      0x80     /* bit 7: F (1=FRAME from thread) */
+#define OMF_FIX_DATA_FRAME_MASK        0x70     /* bits 6-4: Frame (3 bits: thread# or method) */
 #define OMF_FIX_DATA_FRAME_SHIFT       4
-#define OMF_FIX_DATA_TARGET_THREAD     0x08
-#define OMF_FIX_DATA_P_MASK            0x04
-#define OMF_FIX_DATA_TARGT_MASK        0x03
+#define OMF_FIX_DATA_TARGET_THREAD     0x08     /* bit 3: T (1=TARGET from thread) */
+#define OMF_FIX_DATA_P_MASK            0x04     /* bit 2: P (0=displacement present) */
+#define OMF_FIX_DATA_TARGT_MASK        0x03     /* bits 1-0: Targt (thread# or low method bits) */
+
+/* Combined explicit target method mask (P + Targt = 3 bits).  */
 #define OMF_FIX_DATA_TARGET_METHOD_MASK \
   (OMF_FIX_DATA_TARGT_MASK | OMF_FIX_DATA_P_MASK)
 
-#define OMF_FIXUP_THREAD_DATA_D_FIELD_MASK    0x40
+/* §3.1: THREAD subrecord first byte bit masks.
+   Layout: 0 D MMM TT  (1+1+3+2 bits; bit 2 is unused/reserved).  */
+#define OMF_FIXUP_THREAD_DATA_D_FIELD_MASK    0x40     /* bit 6: D (1=FRAME, 0=TARGET) */
 #define OMF_FIXUP_THREAD_DATA_D_FIELD_SHIFT   6
-#define OMF_FIXUP_THREAD_DATA_METHOD_MASK     0x1c
-#define OMF_FIXUP_THREAD_DATA_METHOD_SHIFT    0x10
-#define OMF_FIXUP_THREAD_DATA_THREAD_NUMBER   0x3
+#define OMF_FIXUP_THREAD_DATA_METHOD_MASK     0x38     /* bits 5-3: Method (3 bits) */
+#define OMF_FIXUP_THREAD_DATA_METHOD_SHIFT    3
+#define OMF_FIXUP_THREAD_DATA_THREAD_NUMBER   0x3      /* bits 1-0: Thred (2 bits, 0-3) */
 
 #define OMF_GRPDEF_NONE                0
 #define OMF_GRPDEF_COMPONENT_SEGMENT   0xff
@@ -283,6 +296,18 @@ struct i386omf_symbol
   struct i386omf_group* group;
 };
 
+/* §3.4: Per-thread-slot state (4 FRAME + 4 TARGET threads).
+   Defined by THREAD subrecords; consumed by FIXUP subrecords.
+   Thread persistence: once defined, a thread remains valid
+   across subsequent FIXUPP records until explicitly redefined.  */
+struct i386_fixup_thread
+{
+  int index;           /* SEGDEF/GRPDEF/EXTDEF index, or 0 for method 3 */
+  int thread_number;   /* slot number 0-3 (duplicated from array index) */
+  bool is_frame;       /* true=FRAME thread, false=TARGET thread */
+  int method;          /* 0-6 (full 3-bit method from THREAD subrecord) */
+};
+
 struct i386omf_obj_data
 {
   bfd_byte* image;
@@ -296,22 +321,17 @@ struct i386omf_obj_data
   struct strtab* externs;
   struct strtab* abs_pubdef;
   struct strtab* dependencies;
-  struct i386omf_segment* last_leidata;
-  struct strtab* fixup_threads;
+  struct i386omf_segment* last_leidata;        /* §1: most recent LEDATA/LIDATA/COMDAT for FIXUPP */
+  struct i386_fixup_thread frame_threads[4];   /* §3: FRAME thread slots 0-3 */
+  struct i386_fixup_thread target_threads[4];  /* §3: TARGET thread slots 0-3 */
+  bool frame_thread_used[4];                   /* §7 item 2: thread-defined check */
+  bool target_thread_used[4];
 };
 
 struct i386omf_relent
 {
   arelent base;
   asymbol* symbol;
-};
-
-struct i386_fixup_thread
-{
-  int index;
-  int thread_number;
-  bool is_frame;
-  int method;
 };
 
 enum reloc_type
@@ -358,11 +378,15 @@ i386omf_fix_wrt_frame(bfd* abfd, arelent* reloc_entry, asymbol* symbol,
                       char** error_message);
 
 /**
+ * FIXUPP (0x9C / 0x9D) record handler — see fixupp_record_spec.md.
+ *
  * Record type 9DH is new for LINK386; it has a Target Displacement field
  * of 32 bits rather than 16 bits, and the Location field of the Locat
  * word has been extended to 4 bits (using the previously unused higher
  * order S bit) to allow new LOCATION values of 9, 11, and 13.
- */
+ *
+ * §4.2: Location values for howto selection.  Note vendor conflicts
+ * at values 5,6,9,11 between MS/IBM and PharLap conventions (§8).  */
 /* There are no HOWTO entries for far pointer relocs, as we expand them to
    a tuple of SEG and OFF relocs.  Neither does gas generate FAR relocs.  */
 reloc_howto_type howto_table_i386omf_pcrel[] = {
@@ -456,7 +480,7 @@ hexdump(bfd_byte const* p, bfd_size_type len)
   /* XXX - 1000 is the size of _bfd_default_error_handler()'s buffer. */
   if (len > 1000 / 3)
   {
-    _bfd_error_handler(_("(truncated hexdump)"));
+    if (omf_debug) fprintf(stderr, "(truncated hexdump)\n");
     len = 1000 / 3;
   }
 
@@ -472,7 +496,7 @@ hexdump(bfd_byte const* p, bfd_size_type len)
   {
     sprintf(s + i * 3, " %02x", (unsigned int) bfd_get_8(abfd, p + i));
   }
-  _bfd_error_handler("%s", s);
+  if (omf_debug) fprintf(stderr, "%s", s);
   free(s);
 }
 
@@ -726,8 +750,8 @@ i386omf_read_coment(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
   {
     case OMF_COMENT_TRANSLATOR:
       if (tdata->translator)
-        (*_bfd_error_handler)("Translator already set to %s",
-                              tdata->translator);
+        if (omf_debug) fprintf(stderr, "Translator already set to %s\n",
+                                tdata->translator);
       if (reclen && !ISPRINT(bfd_get_8(abfd, p))
           && bfd_get_8(abfd, p) == reclen - 1)
       {
@@ -859,7 +883,7 @@ i386omf_read_modend(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
 
   if (*p & ~(OMF_MODEND_MAIN_MODULE | OMF_MODEND_START_ADDRESS))
   {
-    (*_bfd_error_handler)("Too much cleverness in MODEND record.");
+    if (omf_debug) fprintf(stderr, "Too much cleverness in MODEND record.\n");
     hexdump(p, reclen);
   }
 
@@ -1049,8 +1073,8 @@ i386omf_read_pubdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
     base_frame = bfd_get_16(abfd, p);
     p += 2;
     reclen -= 2;
-    (*_bfd_error_handler)("PUBDEF with base frame 0x%04x",
-                          (unsigned int) base_frame);
+    if (omf_debug) fprintf(stderr, "PUBDEF with base frame 0x%04x\n",
+                            (unsigned int) base_frame);
   }
 
   while (reclen)
@@ -1121,8 +1145,8 @@ i386omf_read_pubdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
 
       if (base_frame)
       {
-        _bfd_error_handler("PUBDEF %s has nonzero base frame 0x%04lx",
-                           pubdef->base.name, (unsigned long) base_frame);
+        if (omf_debug) fprintf(stderr, "PUBDEF %s has nonzero base frame 0x%04lx\n",
+                                pubdef->base.name, (unsigned long) base_frame);
       }
     }
     else
@@ -1305,7 +1329,7 @@ i386omf_read_segdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32
     }
 
     if (reclen || segdefs_seen != 1)
-        (*_bfd_error_handler)("SEGDEF record doesn't contain exactly one segment definition");
+        if (omf_debug) fprintf(stderr, "SEGDEF record doesn't contain exactly one segment definition\n");
 
     return true;
 }
@@ -1425,26 +1449,38 @@ SYNOPSIS
     static bool i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen);
 
 DESCRIPTION
-    Reads and processes an OMF FIXUPP record, which describes relocations and fixups.
-    Handles both fixup and thread subrecords, updating relocation tables as needed.
-    Reports errors for malformed records.
+    Reads and processes an OMF FIXUPP record (0x9C or 0x9D), which describes
+    relocations and fixups.  Handles both fixup subrecords (§4) and thread
+    subrecords (§3), updating relocation tables as needed.
 
-    @param abfd   The BFD file handle.
-    @param p      Pointer to the record data.
-    @param reclen Length of the record data.
-    @return       true on success, false on error.
+    Implements fixupp_record_spec.md — the specification derived from the
+    TIS OMF v1.1 §"9CH or 9DH FIXUPP—Fixup Record".
+
+    Record layout per §2:
+      [ rectype 9C/9D ][ length lo ][ length hi ][ subrecords... ][ checksum ]
+    The caller passes p pointing past the 3-byte header, reclen = length - 1
+    (checksum already excluded).  See process_record() at line 2219.
+
+    @param abfd    The BFD file handle.
+    @param p       Pointer to the record body (after header, excl. checksum).
+    @param reclen  Length of the record body.
+    @param is_32bit Nonzero if record type == 0x9D (32-bit FIXUPP386).
+    @return        true on success, false on error.
 */
 static bool
-i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
+i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_32bit) {
     struct i386omf_obj_data *tdata = abfd->tdata.any;
     bfd_byte const *q;
 
     while (reclen) {
         int subrec;
 
+        /* §2: Subrecord type detection via high bit of first byte.
+           bit 7 = 1 → FIXUP subrecord (§4)
+           bit 7 = 0 → THREAD subrecord (§3)  */
         subrec = bfd_get_8(abfd,
-                           p);                                         // Reads the next byte from p as the subrecord type (subrec). This byte indicates the type of fixup record being processed.
-        if (subrec & OMF_FIXUPP_FIXUP) {    // this is a fixup field
+                           p);
+        if (subrec & OMF_FIXUPP_FIXUP) {    // this is a fixup field (§4)
             int location, fixdata;
             int frame_method, frame = 0, target_method, target = 0;
             bfd_size_type offset, displacement = 0;
@@ -1452,12 +1488,14 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
             struct i386omf_symbol *sym, *frame_sym;
             reloc_howto_type *howto;
 
+            /* §7 item 1: Reject FIXUP subrecord if no preceding data record.  */
             if (tdata->last_leidata == NULL) {
                 _bfd_error_handler(_("FIXUP record without LEIDATA"));
                 bfd_set_error(bfd_error_wrong_format);
                 return false;
             }
 
+            /* Minimum: Locat (2) + Fix Data (1) = 3 bytes always present.  */
             if (reclen < 3) {
                 (*_bfd_error_handler)("FIXUP subrecord truncated at 0x%lx.",
                                       p - tdata->image);
@@ -1465,128 +1503,147 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
                 return false;
             }
 
-            /* Read then skip first 3 bytes that must always be present. */
-            location = (subrec & OMF_FIXUP_LOCATION_MASK)                     //
-                    >> OMF_FIXUP_LOCATION_SHIFT;                              // Extracts the LOC field
-            offset = bfd_get_8(abfd, p + 1) + 256 * (subrec & 3);             // and offset bits 9 through 0 of the fixup field
-            fixdata = bfd_get_8(abfd, p + 2);
-            p += 3;                                                           // Advances the pointer p past the processed bytes
-            reclen -= 3;                                                      // and decrements reclen accordingly.
+            /* §4.2 + §4.3: Read the mandatory 3-byte prefix.
+               Locat field byte order (§4.2): byte0 (subrec) carries the
+               HIGH-order bits (type flag, M, Location, offset_hi);
+               byte1 (p+1) carries the low 8 bits of the Data Record Offset.
+               This is reversed from normal Intel byte order — reading the
+               two bytes as big-endian on the wire yields the correct value.  */
+            location = (subrec & OMF_FIXUP_LOCATION_MASK)          // bits 5-2: Location (4 bits, 0-13)
+                    >> OMF_FIXUP_LOCATION_SHIFT;
+            offset = bfd_get_8(abfd, p + 1) + 256 * (subrec & 3); // Data Record Offset = hi<<8 | lo (10 bits, 0-1023)
+            fixdata = bfd_get_8(abfd, p + 2);                     // Fix Data byte (§4.3): F Frame(3) T P Targt(2)
+            p += 3;
+            reclen -= 3;
             if (omf_debug) fprintf(stderr, " FIXUP subrec at [%p]: %02x, M: %02x, location: %02x, offset: %02llx, fixdata: %02llx\n",
                     p, subrec, (subrec & OMF_FIXUP_SEGREL) >> 6, location, (unsigned long long)offset, (unsigned long long)fixdata);
 
+            /* §4.4: Resolve FRAME.
+               F=1 (OMF_FIX_DATA_FRAME_THREAD): FRAME from thread slot.
+               F=0: explicit FRAME method F0-F5 in the Frame field.  */
             if (fixdata & OMF_FIX_DATA_FRAME_THREAD) {
-                /* FRAME for this fixup is specified by a reference to a previous thread field. */
+                /* F=1: FRAME from thread.  */
                 struct i386_fixup_thread *frame_thread;
 
-                _bfd_error_handler(_("  F_bit: %x, frame_method: %0x, T_bit: %x, P_bit: %x, targt: %x"),
-                        // (*_bfd_error_handler)("  F_bit: %x, frame_method: %0x, T_bit: %x, P_bit: %x, targt: %x\n",
-                                   (fixdata & 0x80)
-                                           >> 0x7,              /* if F_bit=1. There is no frame datum field in the subrecord.*/
-                                   (fixdata & OMF_FIX_DATA_FRAME_MASK) >> OMF_FIX_DATA_FRAME_SHIFT,
-                                   (fixdata & 0x8) >> 0x3,
-                                   (fixdata & 0x4) >> 0x2,
-                                   fixdata & 0x3);
-                /* frame = 0;*/
-
-                /* the frame field contains a number between 0 and 3 that indicates the thread field containing the FRAME method. */
-                frame_thread = strtab_lookup(tdata->fixup_threads,
-                                             (fixdata & OMF_FIX_DATA_FRAME_MASK) >> OMF_FIX_DATA_FRAME_SHIFT);
-                _bfd_error_handler(_("  fixup FRAME thread_number: %x, method: %d, is_frame: %d, index: %x"),
-                        //(*_bfd_error_handler)("  fixup FRAME thread_number: %x, method: %d, is_frame: %d, index: %x\n",
-                                   frame_thread->thread_number,
-                                   frame_thread->method,
-                                   frame_thread->is_frame,
-                                   frame_thread->index);
+                /* Mask Frame field bits 6-4 to 2 bits for thread number 0-3,
+                   per §4.3: "FRAME thread number (use Frame & 3)".  */
+                int frame_tnum = (fixdata & OMF_FIX_DATA_FRAME_MASK) >> OMF_FIX_DATA_FRAME_SHIFT & 3;
+                /* §7 item 2: Reject reference to undefined thread.  */
+                if (frame_tnum > 3 || !tdata->frame_thread_used[frame_tnum]) {
+                    _bfd_error_handler("FIXUP at 0x%lx references undefined FRAME thread %d",
+                                       (unsigned long)(p - tdata->image), frame_tnum);
+                    bfd_set_error(bfd_error_wrong_format);
+                    return false;
+                }
+                frame_thread = &tdata->frame_threads[frame_tnum];
+                if (omf_debug) fprintf(stderr, "  fixup FRAME thread_number: %x, method: %d, is_frame: %d, index: %x\n",
+                                        frame_thread->thread_number,
+                                        frame_thread->method,
+                                        frame_thread->is_frame,
+                                        frame_thread->index);
                 frame_method = frame_thread->method;
                 frame = frame_thread->index;
+            /* F=0: explicit FRAME method F0-F5.  */
             } else {
                 /* FRAME method is explicitly defined in this fixup field. */
                 /* frame field contains 0,1, 2, 4, or 5, corresponding to one of the methods of specifying a FRAME listed in Table 19-2. */
                 frame_method = (fixdata & OMF_FIX_DATA_FRAME_MASK) >> OMF_FIX_DATA_FRAME_SHIFT;
             }
 
-            /*(*_bfd_error_handler)("  F_bit: %x, frame_method: %0x, T_bit: %x, P_bit: %x, targt: %x",
-                                  (fixdata & 0x80) >> 0x7,
-                                  frame_method,
-                                  (fixdata&0x8) >> 0x3,
-                                  (fixdata&0x4) >> 0x2,
-                                  fixdata&0x3);*/
+            /* §4.4: Resolve FRAME by method.  */
             switch (frame_method) {
                 struct i386omf_segment *segdef;
                 struct i386omf_group *grp;
 
-                case OMF_FIXUPP_FRAME_SEGDEF:       // The FRAME is specified by a segment index.
+                case OMF_FIXUPP_FRAME_SEGDEF:        /* F0: SEGDEF index.  */
                     if (!(fixdata & OMF_FIX_DATA_FRAME_THREAD)
                         && !i386omf_read_index(abfd, &frame, &p, &reclen))
                         return false;
                     segdef = strtab_lookup(tdata->segdef, frame);
+                    if (segdef == NULL) {
+                        _bfd_error_handler("FIXUP at 0x%lx references undefined segment [%d]",
+                                           (unsigned long)(p - tdata->image), frame);
+                        bfd_set_error(bfd_error_wrong_format);
+                        return false;
+                    }
                     frame_sym = (struct i386omf_symbol *) segdef->asect->symbol;
                     break;
-                case OMF_FIXUPP_FRAME_GRPDEF:       // The FRAME is specified by a group index.
+                case OMF_FIXUPP_FRAME_GRPDEF:        /* F1: GRPDEF index.  */
                     if (!(fixdata & OMF_FIX_DATA_FRAME_THREAD)
                         && !i386omf_read_index(abfd, &frame, &p, &reclen))
                         return false;
                     grp = strtab_lookup(tdata->grpdef, frame);
+                    if (grp == NULL) {
+                        _bfd_error_handler("FIXUP at 0x%lx references undefined group [%d]",
+                                           (unsigned long)(p - tdata->image), frame);
+                        bfd_set_error(bfd_error_wrong_format);
+                        return false;
+                    }
                     frame_sym = grp->symbol;
                     break;
-                case OMF_FIXUPP_FRAME_EXTDEF:       // The FRAME is indicated by an external index. LINK determines the FRAME from the external name's corresponding PUBDEF record in another object module, which specifies either a logical segment or a group.
+                case OMF_FIXUPP_FRAME_EXTDEF:        /* F2: EXTDEF index.  */
                     if (!(fixdata & OMF_FIX_DATA_FRAME_THREAD)
                         && !i386omf_read_index(abfd, &frame, &p, &reclen))
                         return false;
                     frame_sym = strtab_lookup(tdata->externs, frame);
                     break;
-                case OMF_FIXUPP_FRAME_EXPLICIT:     // The FRAME is identified by an explicit frame number. (Not supported by LINK.)
-                    frame = (int) bfd_get_16(abfd, p);
-                    p += 2;
-                    reclen -= 2;
-                    frame_sym = NULL; /* TODO: Make an absolute symbol. */
-                    break;
-                case OMF_FIXUPP_FRAME_LEIDATA:  // The FRAME is determined by the segment in which the LOCATION is defined. In this case, the largest possible frame number is used.
+                case OMF_FIXUPP_FRAME_EXPLICIT:      /* F3: explicit frame — invalid.  §7 item 3.  */
+                    _bfd_error_handler("FIXUP at 0x%lx invalid explicit frame method F3",
+                                       (unsigned long)(p - tdata->image));
+                    bfd_set_error(bfd_error_wrong_format);
+                    return false;
+                case OMF_FIXUPP_FRAME_LEIDATA:       /* F4: frame = preceding LEDATA's segment.  */
                     frame_sym = (struct i386omf_symbol *) tdata->last_leidata->asect->symbol;
                     break;
-                case OMF_FIXUPP_FRAME_TARGET:   // The FRAME is determined by the TARGET'S segment, group, or external index.
+                case OMF_FIXUPP_FRAME_TARGET:        /* F5: frame = TARGET's segment/group/external.
+                                                         Resolved in second pass (§4.4, §7 item 10).  */
                     frame_sym = NULL;
                     break;
-                default:
+                default:                             /* F6+ invalid.  §7 item 3.  */
                     bfd_set_error(bfd_error_wrong_format);
                     return false;
             }
 
-            if (fixdata & OMF_FIX_DATA_TARGET_THREAD) {     // if T bit set to one
+            /* §4.5: Resolve TARGET.
+               T=1 (OMF_FIX_DATA_TARGET_THREAD): TARGET from thread slot.
+               T=0: explicit method (P:Targt) as 3-bit selector.  */
+            if (fixdata & OMF_FIX_DATA_TARGET_THREAD) {     // T=1: via thread
                 struct i386_fixup_thread *target_thread;
-                // XXX Look it up from the TARGET thread.
-                // target_method = 0;
-                // target = 0;
 
-                /*  If the T bit indicates that the TARGET is specified by a previous thread reference
-                   (T = 1), the targt field contains a number between 0 and 3 that refers to a previous
-                   thread field containing the TARGET method. In this case, the P bit, combined with the 2
-                   low-order bits of the method field in the thread field, determines the TARGET thread. */
-                target_thread = strtab_lookup(tdata->fixup_threads,
-                                              fixdata & (OMF_FIX_DATA_P_MASK + OMF_FIX_DATA_TARGT_MASK));
-                _bfd_error_handler(_("  fixup TARGET thread_number: %x, method: %d, is_frame: %d, index: %x"),
-                        //(*_bfd_error_handler)("  fixup TARGET thread_number: %x, method: %d, is_frame: %d, index: %x\n",
-                                   target_thread->thread_number,
-                                   target_thread->method,
-                                   target_thread->is_frame,
-                                   target_thread->index);
-                target_method = target_thread->method;
-                target = target_thread->index;
-            } else {
-                target_method = fixdata & OMF_FIX_DATA_TARGET_METHOD_MASK;
+                int target_tnum = fixdata & OMF_FIX_DATA_TARGT_MASK;
+                /* §7 item 2: Reject reference to undefined thread.  */
+                if (target_tnum > 3 || !tdata->target_thread_used[target_tnum]) {
+                    _bfd_error_handler("FIXUP at 0x%lx references undefined TARGET thread %d",
+                                       (unsigned long)(p - tdata->image), target_tnum);
+                    bfd_set_error(bfd_error_wrong_format);
+                    return false;
+                }
+                target_thread = &tdata->target_threads[target_tnum];
+                /* §4.5: Effective method = (P << 2) | (stored_method & 3).
+                   The thread stores only low 2 method bits; the high bit
+                   (method 4 vs 0, etc.) comes from THIS FIXUP's P bit.  */
+                target_method = ((fixdata & OMF_FIX_DATA_P_MASK) >> 2) << 2
+                              | (target_thread->method & 3);
+                target = target_thread->index;   // datum from thread store
+            } else {   // T=0: explicit method
+                target_method = fixdata & OMF_FIX_DATA_TARGET_METHOD_MASK;   // (P:Targt) = 3-bit method
             }
             target_relent = bfd_alloc(abfd, sizeof(*target_relent));
             if (target_relent == NULL)
                 return false;
 
             q = p;
+            /* §4.4 conditional field presence + §4.5 method dispatch.
+               Index field present for methods 0,1,2,4,5,6;
+               absent for method 3 (explicit frame number reads 2 bytes below).
+               When T=1 ("via thread"), datum comes from thread store —
+               skip stream read.  */
             switch (target_method) {
                 struct i386omf_segment *segdef;
                 struct i386omf_group *grpdef;
 
-                case OMF_FIXUPP_TARGET_SEGDEF:
-                case OMF_FIXUPP_TARGET_NODISP | OMF_FIXUPP_TARGET_SEGDEF:
+                case OMF_FIXUPP_TARGET_SEGDEF:               // T0: SEGDEF index + displacement
+                case OMF_FIXUPP_TARGET_NODISP | OMF_FIXUPP_TARGET_SEGDEF:  // T4: SEGDEF index only
                     if (!(fixdata & OMF_FIX_DATA_TARGET_THREAD) && !i386omf_read_index(abfd, &target, &p, &reclen))
                         return false;
                     segdef = strtab_lookup(tdata->segdef, target);
@@ -1598,8 +1655,8 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
                     }
                     target_relent->symbol = segdef->asect->symbol;
                     break;
-                case OMF_FIXUPP_TARGET_GRPDEF:
-                case OMF_FIXUPP_TARGET_NODISP | OMF_FIXUPP_TARGET_GRPDEF:
+                case OMF_FIXUPP_TARGET_GRPDEF:               // T1: GRPDEF index + displacement
+                case OMF_FIXUPP_TARGET_NODISP | OMF_FIXUPP_TARGET_GRPDEF:  // T5: GRPDEF index only
                     if (!(fixdata & OMF_FIX_DATA_TARGET_THREAD) && !i386omf_read_index(abfd, &target, &p, &reclen))
                         return false;
                     grpdef = strtab_lookup(tdata->grpdef, target);
@@ -1611,8 +1668,8 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
                     }
                     target_relent->symbol = NULL;
                     break;
-                case OMF_FIXUPP_TARGET_EXTDEF:
-                case OMF_FIXUPP_TARGET_NODISP | OMF_FIXUPP_TARGET_EXTDEF:
+                case OMF_FIXUPP_TARGET_EXTDEF:               // T2: EXTDEF index + displacement
+                case OMF_FIXUPP_TARGET_NODISP | OMF_FIXUPP_TARGET_EXTDEF:  // T6: EXTDEF index only
                     if (!(fixdata & OMF_FIX_DATA_TARGET_THREAD) && !i386omf_read_index(abfd, &target, &p, &reclen))
                         return false;
                     sym = strtab_lookup(tdata->externs, target);
@@ -1625,18 +1682,25 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
                     }
                     target_relent->symbol = &sym->base;                 // base is arelent
                     break;
-                case OMF_FIXUPP_TARGET_EXPLICIT:
-                case OMF_FIXUPP_TARGET_NODISP | OMF_FIXUPP_TARGET_EXPLICIT:
-                    target = (int) bfd_get_16(abfd, p);
-                    p += 2;
-                    reclen -= 2;
+                case OMF_FIXUPP_TARGET_EXPLICIT:              // T3: explicit frame number
+                case OMF_FIXUPP_TARGET_NODISP | OMF_FIXUPP_TARGET_EXPLICIT: // T7: explicit frame, no disp
+                    /* §4.4: When T=0, a 2-byte explicit frame number follows.
+                       When T=1, the datum comes from the thread store — skip
+                       the stream read (the thread stores the frame number as
+                       its index, or 0 if none was provided).  */
+                    if (!(fixdata & OMF_FIX_DATA_TARGET_THREAD)) {
+                        target = (int) bfd_get_16(abfd, p);
+                        p += 2;
+                        reclen -= 2;
+                    }
                     target_relent->symbol = NULL;
                     break;
             }
-            // displacement is provided if P bit is set to 0
-            if (!(fixdata & 0x80) >> 0x7) {
+            /* §4.6 + §7 item 5: Target Displacement present if P=0.
+               Width: 2 bytes for 0x9C (FIXUPP), 4 bytes for 0x9D (FIXUPP386).  */
+            if (!(fixdata & OMF_FIX_DATA_P_MASK)) {
                 if (!i386omf_read_offset(abfd, &displacement, &p, &reclen,
-                                         I386OMF_OFFSET_SIZE_16)) {
+                                         is_32bit ? I386OMF_OFFSET_SIZE_32 : I386OMF_OFFSET_SIZE_16)) {
                     _bfd_error_handler("FIXUP at 0x%lx wants displacement but none given [%d]",
                                         (unsigned long)(q - tdata->image),
                                         target);
@@ -1645,19 +1709,19 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
                 }
             }
 
-            // this logic was incorrect
-            /*if (!(target_method & OMF_FIXUPP_TARGET_NODISP)) {
-                if (!i386omf_read_offset(abfd, &displacement, &p, &reclen,
-                                         I386OMF_OFFSET_SIZE_16)) {
-                    if (omf_debug) fprintf(stderr, "FIXUP at 0x%zx wants displacement but none given [%d]\n",
-                                          q - tdata->image, target);
-                    return false;
-                }
-            }*/
+            /* §4.2.1: Validate Location value (0-13, values 7,8,10,12 reserved).  */
+            if (location >= 14) {
+                _bfd_error_handler("FIXUP at 0x%lx unsupported location type %d",
+                                   (unsigned long)(q - tdata->image), location);
+                bfd_set_error(bfd_error_wrong_format);
+                return false;
+            }
 
+            /* §7 (BFD relocation generation): Build arelent from decoded fixup.
+               howto selected by (location, mode=M bit).  */
             target_relent->base.sym_ptr_ptr = &target_relent->symbol;
             target_relent->base.address = offset;
-            howto = &(subrec & OMF_FIXUP_SEGREL                     // M bit - 1 segment relative, 0 - self relative
+            howto = &(subrec & OMF_FIXUP_SEGREL                     // M bit: 1=segrel, 0=self-rel
                       ? howto_table_i386omf_segrel
                       : howto_table_i386omf_pcrel)[location];
             target_relent->base.addend
@@ -1667,15 +1731,22 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
             target_relent->base.howto = howto;
             strtab_add(tdata->last_leidata->relocs, target_relent);
 
+            /* §7 item 10: F5 second-pass resolution.
+               F4 (FRAME_LEIDATA) was resolved inline above.
+               F5 (FRAME_TARGET): derive frame symbol from TARGET's
+               segment/group/external now that TARGET is known.  */
             switch (frame_method) {
-                case OMF_FIXUPP_FRAME_TARGET:       // the frame is determined by the target's segment, group or external index
-                    // TODO fix this
-                    break;
+                case OMF_FIXUPP_FRAME_TARGET:
+                    /* Frame derived from target's segment/group/external. */
+                    frame_sym = (struct i386omf_symbol *) target_relent->symbol;
+                    if (frame_sym == NULL)
+                        break;
+                    /* fall through */
                 default:
                     frame_relent = bfd_alloc(abfd, sizeof(*frame_relent));
                     if (frame_relent == NULL)
                         return false;
-                    frame_relent->symbol = &frame_sym->base;
+                    frame_relent->symbol = frame_sym ? &frame_sym->base : NULL;
                     frame_relent->base.sym_ptr_ptr = &frame_relent->symbol;
                     frame_relent->base.address = offset;
                     frame_relent->base.addend = 0;
@@ -1687,35 +1758,50 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
             abfd->flags |= HAS_SYMS;
             tdata->last_leidata->asect->flags |= SEC_RELOC;
 
-        } else {    // this is a thread field
-            struct i386_fixup_thread *fixup_thread;
+        } else {    // THREAD subrecord (§3)
+            int threaddata, index = 0;
 
-            int threaddata, index;
-
+            /* §3.1: First byte.  Layout: 0 D MMM TT (1+1+3+2 bits; bit 2 unused).  */
             threaddata = bfd_get_8(abfd, p++);
             reclen--;
 
-            i386omf_read_index(abfd, &index, &p, &reclen);
+            int thmethod = (threaddata & OMF_FIXUP_THREAD_DATA_METHOD_MASK) >> OMF_FIXUP_THREAD_DATA_METHOD_SHIFT;  // bits 5-3: Method
+            int tnum = threaddata & OMF_FIXUP_THREAD_DATA_THREAD_NUMBER;       // bits 1-0: Thred (0-3)
+            bool is_frame_thread = (threaddata & OMF_FIXUP_THREAD_DATA_D_FIELD_MASK) >> OMF_FIXUP_THREAD_DATA_D_FIELD_SHIFT;  // bit 6: D
+
+            /* §3.2 + §3.3: Index field present for methods 0,1,2 (SEGDEF/GRPDEF/EXTDEF)
+               and TARGET-only methods 4,5,6.  Absent for method 3 (explicit frame)
+               and FRAME methods 4,5.  Uses variable-length OMF index (§3.3).  */
+            if (thmethod <= 2 || (!is_frame_thread && thmethod >= 4 && thmethod <= 6))
+                i386omf_read_index(abfd, &index, &p, &reclen);
+
             if (omf_debug) _bfd_error_handler(
-                    _(" THREAD subrec: %02x, D(%x): %s, data bit5: %x, method: %d - %s, thread number: %d, index: %d"),
+                    _(" THREAD subrec: %02x, D(%x): %s, method: %d - %s, thread number: %d, index: %d"),
                     threaddata,
                     (threaddata & 0x40) >> 6,
-                    ((threaddata & 0x40) >> 6) ? "FRAME" : "TARGET",         // D b6
-                    (threaddata & 0x20),                                     // b5 (always 0)
-                    ((threaddata & 0x1c) >> 2),                             // method b4,b3,b2
-                    thread_method[((threaddata & 0x1c) >> 2)],               // method b4,b3,b2
-                    threaddata & 3,                                          // thread number b1,b0
-                    index                                            // index
+                    is_frame_thread ? "FRAME" : "TARGET",
+                    thmethod,
+                    thread_method[thmethod],
+                    tnum,
+                    index
             );
 
-            fixup_thread = bfd_alloc(abfd, sizeof(*fixup_thread));
-            fixup_thread->index = index;
-            fixup_thread->thread_number = threaddata & OMF_FIXUP_THREAD_DATA_THREAD_NUMBER;
-            fixup_thread->is_frame =
-                    (threaddata & OMF_FIXUP_THREAD_DATA_D_FIELD_MASK) >> OMF_FIXUP_THREAD_DATA_D_FIELD_SHIFT;
-            fixup_thread->method =
-                    (threaddata & OMF_FIXUP_THREAD_DATA_METHOD_MASK) >> OMF_FIXUP_THREAD_DATA_METHOD_SHIFT;
-            strtab_add(tdata->fixup_threads, fixup_thread);
+            /* §3.4: Store thread into the appropriate slot.
+               §7 item 9: Threads persist across FIXUPP records — state is
+               not reset between records.  */
+            if (is_frame_thread) {
+                tdata->frame_threads[tnum].index = index;
+                tdata->frame_threads[tnum].thread_number = tnum;
+                tdata->frame_threads[tnum].is_frame = true;
+                tdata->frame_threads[tnum].method = thmethod;
+                tdata->frame_thread_used[tnum] = true;
+            } else {
+                tdata->target_threads[tnum].index = index;
+                tdata->target_threads[tnum].thread_number = tnum;
+                tdata->target_threads[tnum].is_frame = false;
+                tdata->target_threads[tnum].method = thmethod;
+                tdata->target_thread_used[tnum] = true;
+            }
         }
     }
 
@@ -1990,9 +2076,12 @@ process_record(bfd *abfd,
         case OMF_RECORD_GRPDEF:
             record_ok = i386omf_read_grpdef(abfd, p, reclen);
             break;
+        /* §1 + §2: FIXUPP records (0x9C/0x9D).
+           The caller has already removed the 3-byte header and excluded the
+           checksum byte.  is_32bit = rectype & 1 distinguishes 9D vs 9C.  */
         case OMF_RECORD_FIXUPP:
         case OMF_RECORD_FIXUPP386:
-            record_ok = i386omf_read_fixupp(abfd, p, reclen);
+            record_ok = i386omf_read_fixupp(abfd, p, reclen, rectype & 1);
             break;
         case OMF_RECORD_LEDATA:
         case OMF_RECORD_LIDATA:
@@ -2000,6 +2089,10 @@ process_record(bfd *abfd,
         case OMF_RECORD_LIDATA386:
             record_ok = i386omf_read_leidata(abfd, p, reclen, rectype);
             break;
+        /* §1: COMDAT records are valid predecessors for FIXUPP subrecords
+           (the "nearest preceding data-defining record").  Stubbed — not yet
+           used by this backend, but the FIXUPP error check on last_leidata
+           will reject fixups after COMDAT until this is implemented.  */
         case OMF_RECORD_COMDAT:
         case OMF_RECORD_COMDAT386:
             record_ok = true; /* TODO, need these for watcom. */
@@ -2047,7 +2140,6 @@ i386omf_setup_tdata(bfd *abfd) {
             &tdata->externs,
             &tdata->abs_pubdef,
             &tdata->dependencies,
-            &tdata->fixup_threads,
             NULL
     };
     signed int i;
@@ -2062,6 +2154,11 @@ i386omf_setup_tdata(bfd *abfd) {
             }
             return false;
         }
+    }
+
+    for (i = 0; i < 4; i++) {
+        tdata->frame_thread_used[i] = false;
+        tdata->target_thread_used[i] = false;
     }
 
     return true;
@@ -2088,7 +2185,6 @@ i386omf_teardown_tdata(bfd *abfd) {
             &tdata->externs,
             &tdata->abs_pubdef,
             &tdata->dependencies,
-            &tdata->fixup_threads,
             NULL
     };
     int i;
@@ -2149,7 +2245,6 @@ i386omf_readobject (bfd *abfd, bfd_size_type osize, unsigned long *machine)
   strtab_add (tdata->segdef, NULL);
   strtab_add (tdata->grpdef, NULL);
   strtab_add (tdata->externs, NULL);
-  strtab_add (tdata->fixup_threads, NULL);
 
     /* A quick cheap check for the right file format. */
     if (!osize || bfd_get_8(abfd, tdata->image) != OMF_RECORD_THEADR) {
@@ -2175,6 +2270,9 @@ i386omf_readobject (bfd *abfd, bfd_size_type osize, unsigned long *machine)
             return false;
         }
 
+        /* §2 + §7 item 11: The OMF length field includes the 1-byte checksum
+           trailer.  Subtract 1 to get the body length; the checksum byte is
+           skipped and not validated.  */
         if (!process_record(abfd, rectype,
                             reclen ? reclen - 1 : 0, p + OMF_RECORD_HEADER)) {
             switch (bfd_get_error()) {
@@ -2545,7 +2643,7 @@ i386omf_canonicalize_reloc(bfd *abfd ATTRIBUTE_UNUSED,
 #define binary_set_arch_mach _bfd_generic_set_arch_mach
 
 static bool i386omf_write_object_contents(bfd *abfd) {
-    _bfd_error_handler("i386omf_write_object_contents NOT IMPLEMENTED %s", abfd->filename);
+    if (omf_debug) fprintf(stderr, "i386omf_write_object_contents NOT IMPLEMENTED %s\n", abfd->filename);
     bfd_set_error(bfd_error_invalid_operation);
     return false;
 }
@@ -2598,10 +2696,10 @@ binary_set_section_contents(bfd *abfd,
                have.  */
 
             if (s->filepos < 0)
-                (*_bfd_error_handler)
-                        (_("Warning: Writing section `%s' to huge (ie negative) file offset 0x%lx."),
-                         bfd_section_name(sec),
-                         (unsigned long) s->filepos);
+                if (omf_debug) fprintf(stderr,
+                        "Warning: Writing section `%s' to huge (ie negative) file offset 0x%lx.\n",
+                        bfd_section_name(sec),
+                        (unsigned long) s->filepos);
         }
 
         abfd->output_has_begun = true;
