@@ -37,7 +37,23 @@ jobs:
       run: |
         cd build
         make CFLAGS="-g -Wno-unused-but-set-variable -Wno-unused-function" CXXFLAGS="-Wno-error -Wno-deprecated-declarations" || exit 1
-        make install || exit 1        
+        make install || exit 1
+
+    - name: Test OMF objects
+      run: |
+        set -e
+        mkdir -p /tmp/omf_test
+        build/binutils/testsuite/gentestomf /tmp/omf_test
+        for f in basic section_offsets symbols fixups_simple fixups_threads fixups_all; do
+          echo "--- $f ---"
+          build/binutils/objdump -x "/tmp/omf_test/$f.o" | head -3
+          build/binutils/objdump -x "/tmp/omf_test/$f.o" | grep -q "file format i386omf" || exit 1
+        done
+        for f in error_no_leidata error_undefined_thread error_bad_location error_f3_frame; do
+          echo "--- $f ---"
+          build/binutils/objdump -x "/tmp/omf_test/$f.o" 2>&1 | grep -q "file format not recognized" || exit 1
+        done
+        echo "All OMF tests passed"        
 
     - name: Package
       run: |
