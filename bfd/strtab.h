@@ -1,3 +1,6 @@
+#ifndef STRTAB_H
+#define STRTAB_H
+
 #include "bfd.h"
 
 struct strtab;
@@ -7,3 +10,5 @@ void strtab_free (struct strtab *st);
 int strtab_size(struct strtab const *st);
 int strtab_add(struct strtab *st, void *s);
 void *strtab_lookup(struct strtab *st, int i);
+
+#endif

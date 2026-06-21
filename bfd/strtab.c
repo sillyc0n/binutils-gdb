@@ -2,7 +2,6 @@
 #include "bfd.h"
 #include "strtab.h"
 #include "libbfd.h"
-#include "strtab.h"
 
 #define STRTAB_INIT_SIZE 256
 
