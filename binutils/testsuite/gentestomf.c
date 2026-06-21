@@ -481,6 +481,48 @@ build_fixup (uint8_t *buf, int location, int segrel, int data_rec_offset,
 /*  Test case generators                                               */
 /* ------------------------------------------------------------------ */
 
+/* modend_startaddr.o — MODEND with Start Address subfield.
+   Uses the worked example from modend_record_spec.md §6:
+   Module Type 0xC1 (Main+Strt), F0+T0 → SEGDEF 1, displacement 0.  */
+static void
+gen_modend_startaddr (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "modend_startaddr");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 1, 16, 5, 2, 1, 0, 0);
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 0, data, 16);
+
+  /* MODEND (0x8A) with 6-byte start-address subfield:
+     [0xC1] module type: Main=1, Strt=1
+     [0x00] End Data: F=0 Frame=0 T=0 P=0 Targt=0
+     [0x01] Frame Datum: SEGDEF index 1
+     [0x01] Target Datum: SEGDEF index 1
+     [0x0000] Target Displacement: 0 */
+  uint8_t mod_payload[6];
+  mod_payload[0] = 0xC1;
+  mod_payload[1] = 0x00;
+  mod_payload[2] = 0x01;
+  mod_payload[3] = 0x01;
+  put16le (mod_payload + 4, 0x0000);
+  uint8_t rec[16];
+  int n = omf_record (rec, 0x8a, mod_payload, 6);
+  ob_write (&ob, rec, n);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/modend_startaddr.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
 /* basic.o — minimal valid OMF object with one section.  */
 static void
 gen_basic (const char *outdir)
@@ -528,6 +570,49 @@ gen_section_offsets (const char *outdir)
 
   char path[256];
   snprintf (path, sizeof path, "%s/section_offsets.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* linsym.o — LINSYM (0xC4) record with line-number entries.  */
+static void
+gen_linsym (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "linsym");
+  ob_lnames (&ob, "_TEXT");
+  ob_lnames (&ob, "_foo");
+  ob_segdef (&ob, 1, 32, 5, 2, 1, 0, 0);
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 0, data, 16);
+
+  /* LINSYM (0xC4, 16-bit offsets) with 3 entries for _foo (LNAMES idx 2).  */
+  uint8_t ls_payload[64];
+  int plen = 0;
+  ls_payload[plen++] = 0x00;               /* flags: new instance */
+  plen += omf_index (ls_payload + plen, 2); /* Public Name = "_foo" */
+  put16le (ls_payload + plen, 10); plen += 2; /* line 10 */
+  put16le (ls_payload + plen, 0);  plen += 2; /* offset 0 */
+  put16le (ls_payload + plen, 12); plen += 2; /* line 12 */
+  put16le (ls_payload + plen, 6);  plen += 2; /* offset 6 */
+  put16le (ls_payload + plen, 15); plen += 2; /* line 15 */
+  put16le (ls_payload + plen, 14); plen += 2; /* offset 14 */
+
+  uint8_t rec[512];
+  int n = omf_record (rec, 0xc4, ls_payload, plen);
+  ob_write (&ob, rec, n);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/linsym.o", outdir);
   FILE *f = fopen (path, "wb");
   if (!f) { perror (path); exit (IO_ERROR); }
   fwrite (ob.data, 1, ob.len, f);
@@ -967,6 +1052,41 @@ gen_comdef (const char *outdir)
   }
 }
 
+/* comdat.o — COMDAT386 (0xC3) record with data payload.  */
+static void
+gen_comdat (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "comdat");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 1, 32, 5, 2, 1, 0, 0);
+
+  uint8_t payload[256];
+  int plen = 0;
+  plen += omf_index (payload + plen, 1);
+  put32le (payload + plen, 0); plen += 4;
+  payload[plen++] = 0;
+  uint8_t cdata[16] = { [0 ... 15] = 0x90 };
+  memcpy (payload + plen, cdata, 16);
+  plen += 16;
+
+  uint8_t rec[512];
+  int n = omf_record (rec, 0xc3, payload, plen);
+  ob_write (&ob, rec, n);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/comdat.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
 /* ------------------------------------------------------------------ */
 /*  main                                                                */
 /* ------------------------------------------------------------------ */
@@ -997,8 +1117,10 @@ main (int argc, char **argv)
   printf ("gentestomf: generating OMF test objects in %s\n", outdir);
 
   gen_basic (outdir);
+  gen_modend_startaddr (outdir);
   gen_section_offsets (outdir);
   gen_symbols (outdir);
+  gen_linsym (outdir);
   gen_fixups_simple (outdir);
   gen_fixups_threads (outdir);
   gen_fixups_all (outdir);
@@ -1007,6 +1129,7 @@ main (int argc, char **argv)
   gen_error_bad_location (outdir);
   gen_error_f3_frame (outdir);
   gen_comdef (outdir);
+  gen_comdat (outdir);
 
   printf ("gentestomf: done\n");
   return 0;
