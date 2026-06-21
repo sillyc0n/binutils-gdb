@@ -209,6 +209,10 @@ omf_init_debug (void)
 #define OMF_FIXUP_THREAD_DATA_METHOD_SHIFT    3
 #define OMF_FIXUP_THREAD_DATA_THREAD_NUMBER   0x3      /* bits 1-0: Thred (2 bits, 0-3) */
 
+/* §6.4 item 5: Borland COMDAT uses segment indices 0x4000+ that are
+   synthesized on-the-fly from COMDEF entries.  */
+#define OMF_COMDAT_SEGIDX_BASE         0x4000
+
 #define OMF_GRPDEF_NONE                0
 #define OMF_GRPDEF_COMPONENT_SEGMENT   0xff
 #define OMF_GRPDEF_COMPONENT_EXTERNAL  0xfe
@@ -333,6 +337,10 @@ struct i386omf_obj_data
   struct i386_fixup_thread target_threads[4];  /* §3: TARGET thread slots 0-3 */
   bool frame_thread_used[4];                   /* §7 item 2: thread-defined check */
   bool target_thread_used[4];
+  struct i386omf_segment **comdat_segments;    /* §6.4: Borland COMDAT segments (sparse indices) */
+  int num_comdat_segments;                     /* number of COMDAT segments allocated */
+  int max_comdat_segments;                     /* capacity of comdat_segments array */
+  int next_comdat_segidx;                      /* next COMDAT segidx to allocate (0x4000+N) */
 };
 
 struct i386omf_relent
@@ -383,6 +391,104 @@ static bfd_reloc_status_type
 i386omf_fix_wrt_frame(bfd* abfd, arelent* reloc_entry, asymbol* symbol,
                       void* data, asection* input_section, bfd* output_bfd,
                       char** error_message);
+
+/* Look up a segment by SEGDEF or COMDAT index.
+   COMDAT indices (0x4000+N) are stored in a separate sparse array.  */
+static struct i386omf_segment*
+i386omf_find_segment (struct i386omf_obj_data *tdata, int segidx)
+{
+  struct i386omf_segment *seg;
+
+  seg = strtab_lookup (tdata->segdef, segidx);
+  if (seg != NULL)
+    return seg;
+
+  if (segidx >= OMF_COMDAT_SEGIDX_BASE)
+    {
+      int ci = segidx - OMF_COMDAT_SEGIDX_BASE - 1;
+      if (ci >= 0 && ci < tdata->num_comdat_segments)
+        return tdata->comdat_segments[ci];
+    }
+
+  return NULL;
+}
+
+/* Create a COMDAT-synthesized segment.
+   The segment index is implicit from the order of creation (starts
+   at OMF_COMDAT_SEGIDX_BASE + 1).  Returns the new segment, or NULL
+   on error.  The segment is NOT added to tdata->segdef (strtab is
+   dense); instead it goes into the sparse comdat_segments array.  */
+static struct i386omf_segment*
+i386omf_create_comdat_segment (bfd *abfd)
+{
+  struct i386omf_obj_data *tdata = abfd->tdata.any;
+  struct i386omf_segment *seg;
+  struct i386omf_symbol *seg_sym;
+  char buf[64];
+  int ci;
+
+  seg = bfd_zalloc (abfd, sizeof (*seg));
+  if (seg == NULL)
+    return NULL;
+  seg->combination = 2;
+  seg->name_index = 0;
+  seg->class_index = 0;
+  seg->overlay_index = 0;
+  seg->relocs = strtab_new (abfd);
+  if (seg->relocs == NULL)
+    return NULL;
+  seg->pubdef = strtab_new (abfd);
+  if (seg->pubdef == NULL)
+    return NULL;
+
+  ci = tdata->num_comdat_segments;
+  snprintf (buf, sizeof buf, "COMDAT_%d",
+            OMF_COMDAT_SEGIDX_BASE + 1 + ci);
+  {
+    char *sname = bfd_alloc (abfd, strlen (buf) + 1);
+    if (sname == NULL)
+      return NULL;
+    strcpy (sname, buf);
+    seg->asect = bfd_make_section_anyway (abfd, sname);
+    if (seg->asect == NULL)
+      return NULL;
+  }
+
+  seg_sym = (struct i386omf_symbol *) seg->asect->symbol;
+  seg_sym->name.len = strlen (buf);
+  seg_sym->name.data = bfd_alloc (abfd, seg_sym->name.len + 1);
+  if (seg_sym->name.data == NULL)
+    return NULL;
+  strcpy (seg_sym->name.data, buf);
+
+  seg->asect->used_by_bfd = seg;
+  seg->asect->flags |= (SEC_CODE | SEC_ALLOC);
+
+  /* Grow the sparse array.  */
+  if (ci >= tdata->max_comdat_segments)
+    {
+      int newmax = ci + 8;
+      struct i386omf_segment **newarr;
+      size_t amt;
+
+      if (_bfd_mul_overflow (newmax, sizeof (*newarr), &amt))
+        {
+          bfd_set_error (bfd_error_file_too_big);
+          return NULL;
+        }
+      newarr = bfd_realloc_or_free (tdata->comdat_segments, amt);
+      if (newarr == NULL)
+        return NULL;
+      memset (newarr + tdata->max_comdat_segments, 0,
+              (newmax - tdata->max_comdat_segments) * sizeof (*newarr));
+      tdata->comdat_segments = newarr;
+      tdata->max_comdat_segments = newmax;
+    }
+
+  tdata->comdat_segments[ci] = seg;
+  tdata->num_comdat_segments = ci + 1;
+  return seg;
+}
 
 /**
  * FIXUPP (0x9C / 0x9D) record handler — see fixupp_record_spec.md.
@@ -1088,8 +1194,31 @@ i386omf_read_comdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
         if (data_type >= OMF_COMDEF_DATA_TYPE_MIN_BORLAND
             && data_type <= OMF_COMDEF_DATA_TYPE_MAX_BORLAND)
         {
-          /* Borland segment index — no length field follows.  */
+          /* Borland segment index (§9): data_type IS the segment
+             index.  A 1-byte size field follows — consume it.
+             Pre-create the COMDAT segment so FIXUPP can reference it
+             before any LEDATA arrives.  */
           extdef->base.value = data_type;
+          if (reclen < 1)
+            {
+              (*_bfd_error_handler)(
+                  "COMDEF Borland length truncated at 0x%lx",
+                  p - tdata->image);
+              bfd_set_error(bfd_error_wrong_format);
+              return false;
+            }
+          extdef->base.value |= bfd_get_8(abfd, p) << 8;
+          p++;
+          reclen--;
+
+          /* Create COMDAT segment for this Borland COMDEF entry.  */
+          {
+            struct i386omf_segment *cs
+              = i386omf_create_comdat_segment (abfd);
+            if (cs == NULL)
+              return false;
+          }
+          tdata->next_comdat_segidx++;
         }
         else
         {
@@ -1689,7 +1818,7 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
                     if (!(fixdata & OMF_FIX_DATA_FRAME_THREAD)
                         && !i386omf_read_index(abfd, &frame, &p, &reclen))
                         return false;
-                    segdef = strtab_lookup(tdata->segdef, frame);
+                    segdef = i386omf_find_segment(tdata, frame);
                     if (segdef == NULL) {
                         _bfd_error_handler("FIXUP at 0x%lx references undefined segment [%d]",
                                            (unsigned long)(p - tdata->image), frame);
@@ -1776,7 +1905,7 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
                 case OMF_FIXUPP_TARGET_NODISP | OMF_FIXUPP_TARGET_SEGDEF:  // T4: SEGDEF index only
                     if (!(fixdata & OMF_FIX_DATA_TARGET_THREAD) && !i386omf_read_index(abfd, &target, &p, &reclen))
                         return false;
-                    segdef = strtab_lookup(tdata->segdef, target);
+                    segdef = i386omf_find_segment(tdata, target);
                     if (segdef == NULL) {
                         _bfd_error_handler("FIXUP at 0x%lx wants phantom segment [%d]",
                                             (unsigned long)(q - tdata->image), target);
@@ -2118,13 +2247,22 @@ i386omf_read_leidata(bfd *abfd, bfd_byte const *p,
         return false;
     }
 
-    segdef = strtab_lookup(tdata->segdef, seg_index);
+    segdef = i386omf_find_segment (tdata, seg_index);
     if (segdef == NULL) {
-        _bfd_error_handler("LEDATA at 0x%lx wants phantom segment [%d]",
-                            p - tdata->image,
-                            seg_index);
-        bfd_set_error(bfd_error_wrong_format);
-        return false;
+      if (seg_index >= OMF_COMDAT_SEGIDX_BASE)
+        {
+          segdef = i386omf_create_comdat_segment (abfd);
+          if (segdef == NULL)
+            return false;
+        }
+      else
+        {
+          _bfd_error_handler("LEDATA at 0x%lx wants phantom segment [%d]",
+                              p - tdata->image,
+                              seg_index);
+          bfd_set_error(bfd_error_wrong_format);
+          return false;
+        }
     }
 
     /* We'll need to know which section FIXUP records refer to. */
@@ -2135,6 +2273,11 @@ i386omf_read_leidata(bfd *abfd, bfd_byte const *p,
         return false;
 
     segdef->last_data_offset = offset;
+
+    /* COMDAT segments are created with size 0.  Grow the section
+       to accommodate the data.  */
+    if (offset + reclen > segdef->asect->size)
+      segdef->asect->size = offset + reclen;
 
     if (!i386omf_add_section_data(abfd, segdef->asect, offset,
                                   p, reclen, rectype))
@@ -2292,6 +2435,8 @@ i386omf_setup_tdata(bfd *abfd) {
         tdata->frame_thread_used[i] = false;
         tdata->target_thread_used[i] = false;
     }
+
+    tdata->next_comdat_segidx = OMF_COMDAT_SEGIDX_BASE + 1;
 
     return true;
 }
