@@ -319,6 +319,16 @@ struct i386_fixup_thread
   int method;          /* 0-6 (full 3-bit method from THREAD subrecord) */
 };
 
+struct i386omf_start_addr
+{
+  bool has_start;
+  int frame_method;
+  int frame_idx;
+  int target_method;
+  int target_idx;
+  bfd_vma displacement;
+};
+
 struct i386omf_obj_data
 {
   bfd_byte* image;
@@ -326,6 +336,7 @@ struct i386omf_obj_data
   struct counted_string module_name;
   bool is_main_module;
   bool has_start_address;
+  struct i386omf_start_addr start_addr;
   struct strtab* lnames;
   struct strtab* segdef;
   struct strtab* grpdef;
@@ -968,21 +979,28 @@ i386omf_read_coment(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
     i386omf_read_modend
 
 SYNOPSIS
-    static bool i386omf_read_modend(bfd* abfd, bfd_byte const* p, bfd_size_type reclen);
+    static bool i386omf_read_modend(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
+                                     int is_32bit);
 
 DESCRIPTION
-    Reads and processes an OMF MODEND record, which marks the end of a module.
-    Sets flags for main module and start address. Reports errors for malformed records.
+    Reads and processes an OMF MODEND record (0x8A/0x8B), which marks the end
+    of a module.  Parses the Module Type byte per §3 and, when the Strt bit is
+    set, consumes the Start Address subfield (§4) using the same Fix Data /
+    Frame Datum / Target Datum / Target Displacement encoding as FIXUPP.
 
-    @param abfd   The BFD file handle.
-    @param p      Pointer to the record data.
-    @param reclen Length of the record data.
-    @return       true on success, false on error.
+    @param abfd    The BFD file handle.
+    @param p       Pointer to the record data.
+    @param reclen  Length of the record data (excluding checksum).
+    @param is_32bit Non-zero for 0x8B (32-bit Target Displacement).
+    @return        true on success, false on error.
 */
 static bool
-i386omf_read_modend(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
+i386omf_read_modend(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
+                     int is_32bit)
 {
   struct i386omf_obj_data* tdata = abfd->tdata.any;
+  int module_type;
+  bool has_start;
 
   if (reclen < OMF_RECORD_HEADER_MODEND)
   {
@@ -991,14 +1009,200 @@ i386omf_read_modend(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
     return false;
   }
 
-  tdata->is_main_module = *p & OMF_MODEND_MAIN_MODULE ? true : false;
-  tdata->has_start_address = *p & OMF_MODEND_START_ADDRESS ? true : false;
+  /* §3: Module Type byte — Main(bit7), Strt(bit6), SegmentBit(bit5), X(bit4) */
+  module_type = bfd_get_8(abfd, p);
+  p++;
+  reclen--;
 
-  if (*p & ~(OMF_MODEND_MAIN_MODULE | OMF_MODEND_START_ADDRESS))
+  tdata->is_main_module = (module_type >> 7) & 1;
+  has_start = (module_type >> 6) & 1;
+  tdata->has_start_address = has_start;
+  tdata->start_addr.has_start = false;
+
+  if (module_type & ~(OMF_MODEND_MAIN_MODULE | OMF_MODEND_START_ADDRESS))
   {
-    if (omf_debug) fprintf(stderr, "Too much cleverness in MODEND record.\n");
-    hexdump(p, reclen);
+    if (omf_debug) fprintf(stderr, "MODEND Module Type 0x%02x has non-standard bits set.\n",
+                            module_type);
   }
+
+  if (!has_start)
+    return true;
+
+  /* --- Start Address subfield (§4) --- */
+
+  /* End Data (Fix Data) byte — same layout as FIXUPP Fix Data §4.3:
+     F(1) Frame(3) T(1) P(1) Targt(2) */
+  int fixdata;
+
+  if (reclen < 1)
+  {
+    (*_bfd_error_handler)("MODEND start address subfield truncated at End Data.");
+    bfd_set_error(bfd_error_wrong_format);
+    return false;
+  }
+  fixdata = bfd_get_8(abfd, p);
+  p++;
+  reclen--;
+
+  /* §4.1: P must be 0 — Target Displacement is always present */
+  if (fixdata & OMF_FIX_DATA_P_MASK)
+  {
+    (*_bfd_error_handler)("MODEND start address has P=1 (must be 0).");
+    bfd_set_error(bfd_error_wrong_format);
+    return false;
+  }
+
+  /* --- FRAME (§4.4) --- */
+  if (fixdata & OMF_FIX_DATA_FRAME_THREAD)
+  {
+    /* F=1: FRAME from thread slot */
+    int frame_tnum = (fixdata & OMF_FIX_DATA_FRAME_MASK)
+                     >> OMF_FIX_DATA_FRAME_SHIFT & 3;
+    if (frame_tnum > 3 || !tdata->frame_thread_used[frame_tnum])
+    {
+      (*_bfd_error_handler)("MODEND start address references undefined FRAME thread %d",
+                             frame_tnum);
+      bfd_set_error(bfd_error_wrong_format);
+      return false;
+    }
+    tdata->start_addr.frame_method = tdata->frame_threads[frame_tnum].method;
+    tdata->start_addr.frame_idx = tdata->frame_threads[frame_tnum].index;
+  }
+  else
+  {
+    int frame_method = (fixdata & OMF_FIX_DATA_FRAME_MASK)
+                        >> OMF_FIX_DATA_FRAME_SHIFT;
+    tdata->start_addr.frame_method = frame_method;
+
+    switch (frame_method)
+    {
+      case OMF_FIXUPP_FRAME_SEGDEF:   /* F0 */
+      case OMF_FIXUPP_FRAME_GRPDEF:   /* F1 */
+      case OMF_FIXUPP_FRAME_EXTDEF:   /* F2 */
+        if (!i386omf_read_index(abfd, &tdata->start_addr.frame_idx,
+                                 &p, &reclen))
+          return false;
+        break;
+      case OMF_FIXUPP_FRAME_EXPLICIT: /* F3 — invalid */
+      case 6:                          /* F6 — invalid */
+        (*_bfd_error_handler)("MODEND start address invalid FRAME method %d.",
+                               frame_method);
+        bfd_set_error(bfd_error_wrong_format);
+        return false;
+      /* F4 (LEIDATA), F5 (TARGET): no datum to read */
+    }
+  }
+
+  /* --- TARGET (§4.5) --- */
+  if (fixdata & OMF_FIX_DATA_TARGET_THREAD)
+  {
+    int target_tnum = fixdata & OMF_FIX_DATA_TARGT_MASK;
+    if (target_tnum > 3 || !tdata->target_thread_used[target_tnum])
+    {
+      (*_bfd_error_handler)("MODEND start address references undefined TARGET thread %d",
+                             target_tnum);
+      bfd_set_error(bfd_error_wrong_format);
+      return false;
+    }
+    /* P is always 0 for MODEND, so effective method = stored low 2 bits */
+    tdata->start_addr.target_method = tdata->target_threads[target_tnum].method & 3;
+    tdata->start_addr.target_idx = tdata->target_threads[target_tnum].index;
+  }
+  else
+  {
+    tdata->start_addr.target_method = fixdata & OMF_FIX_DATA_TARGET_METHOD_MASK;
+
+    switch (tdata->start_addr.target_method & 3)
+    {
+      case OMF_FIXUPP_TARGET_SEGDEF:  /* T0/T4 */
+      case OMF_FIXUPP_TARGET_GRPDEF:  /* T1/T5 */
+      case OMF_FIXUPP_TARGET_EXTDEF:  /* T2/T6 */
+        if (!i386omf_read_index(abfd, &tdata->start_addr.target_idx,
+                                 &p, &reclen))
+          return false;
+        break;
+      case OMF_FIXUPP_TARGET_EXPLICIT: /* T3/T7: explicit 2-byte frame number */
+        if (reclen < 2)
+        {
+          (*_bfd_error_handler)("MODEND start address truncated at TARGET datum.");
+          bfd_set_error(bfd_error_wrong_format);
+          return false;
+        }
+        tdata->start_addr.target_idx = bfd_get_16(abfd, p);
+        p += 2;
+        reclen -= 2;
+        break;
+    }
+  }
+
+  /* --- Target Displacement (§4.6) — always present since P=0 --- */
+  if (!i386omf_read_offset(abfd, &tdata->start_addr.displacement,
+                            &p, &reclen,
+                            is_32bit ? I386OMF_OFFSET_SIZE_32
+                                     : I386OMF_OFFSET_SIZE_16))
+    return false;
+
+  tdata->start_addr.has_start = true;
+  return true;
+}
+
+/*
+    i386omf_read_linsym
+
+SYNOPSIS
+    static bool i386omf_read_linsym(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
+                                     int is_32bit);
+
+DESCRIPTION
+    Reads and processes an OMF LINSYM record (0xC4/0xC5), which provides
+    source line-number-to-offset mappings for COMDAT symbols.
+
+    Parses: Flags (1 byte), Public Name OMF index (1-2 bytes),
+    then (Line Number, Offset) entries repeating until the record body
+    is exhausted.  Entry size is 4 bytes for 0xC4 (2+2) and 6 bytes for
+    0xC5 (2+4).  Validates that the body after the Public Name index
+    forms whole entries.
+
+    @param abfd    The BFD file handle.
+    @param p       Pointer to the record data.
+    @param reclen  Length of the record data (excluding checksum).
+    @param is_32bit Non-zero for 0xC5 (32-bit Line Number Offset).
+    @return        true on success, false on error.
+*/
+static bool
+i386omf_read_linsym(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
+                     int is_32bit)
+{
+  bfd_size_type entry_size = is_32bit ? 6 : 4;
+  bfd_size_type remaining;
+  int name_index;
+
+  if (reclen < 2)
+  {
+    (*_bfd_error_handler)("Truncated LINSYM record.");
+    bfd_set_error(bfd_error_wrong_format);
+    return false;
+  }
+
+  p++; reclen--; /* skip Flags byte — we parse structure without storing */
+
+  if (!i386omf_read_index(abfd, &name_index, &p, &reclen))
+    return false;
+
+  remaining = reclen;
+  if (remaining % entry_size != 0)
+  {
+    (*_bfd_error_handler)("LINSYM record has %llu remaining bytes, "
+                           "not a multiple of entry size %llu.",
+                           (unsigned long long) remaining,
+                           (unsigned long long) entry_size);
+    bfd_set_error(bfd_error_wrong_format);
+    return false;
+  }
+
+  /* Advance through all entries to consume the bytes */
+  p += remaining;
+  reclen -= remaining;
 
   return true;
 }
@@ -2429,7 +2633,7 @@ process_record(bfd *abfd,
             break;
         case OMF_RECORD_MODEND:
         case OMF_RECORD_MODEND386:
-            record_ok = i386omf_read_modend(abfd, p, reclen);
+            record_ok = i386omf_read_modend(abfd, p, reclen, rectype & 1);
             break;
         case OMF_RECORD_EXTDEF:
         case OMF_RECORD_LEXTDEF:
@@ -2475,7 +2679,7 @@ process_record(bfd *abfd,
             break;
         case OMF_RECORD_LINSYM:
         case OMF_RECORD_LINSYM386:
-            record_ok = true; /* TODO, need these for watcom. */
+            record_ok = i386omf_read_linsym(abfd, p, reclen, rectype & 1);
             break;
         case OMF_RECORD_COMDEF:
         case OMF_RECORD_LCOMDEF:

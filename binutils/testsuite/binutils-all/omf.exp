@@ -64,6 +64,24 @@ if { [regexp "_TEXT.*00000010.*CONTENTS, ALLOC, LOAD" $got] } {
 }
 
 # -----------------------------------------------------------------------
+#  modend_startaddr.o — MODEND with Start Address subfield
+# -----------------------------------------------------------------------
+set test "OMF modend startaddr: format detection"
+set got [binutils_run $OBJDUMP "-x tmpdir/modend_startaddr.o"]
+if { [regexp "file format i386omf" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF modend startaddr: start address field"
+if { [regexp "start address" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+# -----------------------------------------------------------------------
 #  section_offsets.o — multiple LEDATA records at non-zero offsets
 # -----------------------------------------------------------------------
 set test "OMF sections: size from multiple LEDATA"
@@ -87,6 +105,17 @@ if { [regexp "public_var" $got] } {
 
 set test "OMF symbols: EXTDEF"
 if { [regexp "external_func" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+# -----------------------------------------------------------------------
+#  linsym.o — LINSYM record with line-number entries
+# -----------------------------------------------------------------------
+set test "OMF linsym: format detection"
+set got [binutils_run $OBJDUMP "-x tmpdir/linsym.o"]
+if { [regexp "file format i386omf" $got] } {
     pass $test
 } else {
     fail $test
@@ -250,6 +279,24 @@ if { [regexp "_var3" $got] } {
 set test "OMF error: COMDEF bad data type"
 set got [binutils_run $OBJDUMP "-x tmpdir/error_comdef_bad_type.o"]
 if { [regexp "file format not recognized" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+# -----------------------------------------------------------------------
+#  comdat.o — COMDAT record with data
+# -----------------------------------------------------------------------
+set test "OMF comdat: format detection"
+set got [binutils_run $OBJDUMP "-x tmpdir/comdat.o"]
+if { [regexp "file format i386omf" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF comdat: section contents"
+if { [regexp "_TEXT.*00000030" $got] } {
     pass $test
 } else {
     fail $test
