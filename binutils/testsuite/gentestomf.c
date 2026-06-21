@@ -1087,6 +1087,51 @@ gen_comdat (const char *outdir)
   printf ("  wrote %s (%d bytes)\n", path, ob.len);
 }
 
+/* Write an unrecognized/ignored record to test skipping by length. */
+static void
+ob_unrecognized (struct omf_buf *ob, int rectype, int plen)
+{
+  uint8_t payload[256];
+  for (int i = 0; i < plen; i++)
+    payload[i] = 0xAA;
+  uint8_t rec[512];
+  int n = omf_record (rec, rectype, payload, plen);
+  ob_write (ob, rec, n);
+}
+
+/* skipped_record.o — basic OMF object containing unrecognized record types
+   that the parser should skip gracefully by length. */
+static void
+gen_skipped_record (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "skipped_record");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 1, 16, 5, 2, 1, 0, 0);
+
+  /* Inject an unrecognized record type 0xEE with 16 bytes of payload */
+  ob_unrecognized (&ob, 0xee, 16);
+
+  /* Inject TYPDEF (0x8E), which is also a skipped record in the spec */
+  ob_unrecognized (&ob, 0x8e, 8);
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 0, data, 16);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/skipped_record.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
 /* ------------------------------------------------------------------ */
 /*  main                                                                */
 /* ------------------------------------------------------------------ */
@@ -1130,6 +1175,7 @@ main (int argc, char **argv)
   gen_error_f3_frame (outdir);
   gen_comdef (outdir);
   gen_comdat (outdir);
+  gen_skipped_record (outdir);
 
   printf ("gentestomf: done\n");
   return 0;

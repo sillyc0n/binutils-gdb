@@ -301,3 +301,22 @@ if { [regexp "_TEXT.*00000030" $got] } {
 } else {
     fail $test
 }
+
+# -----------------------------------------------------------------------
+#  skipped_record.o — unrecognized/ignored record types skipped by length
+# -----------------------------------------------------------------------
+set test "OMF skipped record: format detection"
+set got [binutils_run $OBJDUMP "-x tmpdir/skipped_record.o"]
+if { [regexp "file format i386omf" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF skipped record: section contents"
+if { [regexp "_TEXT.*00000010" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+

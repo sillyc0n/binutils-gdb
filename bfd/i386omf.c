@@ -2686,12 +2686,12 @@ process_record(bfd *abfd,
             record_ok = i386omf_read_comdef(abfd, p, reclen);
             break;
         default:
-            _bfd_error_handler("Unknown RECORD record 0x%02x at 0x%X",
-                rectype,
-                (unsigned int)(p - tdata->image));
-
-            bfd_set_error(bfd_error_wrong_format);
-            record_ok = false;
+            if (omf_debug)
+                fprintf(stderr, "Skipping unrecognized record type 0x%02x at 0x%X\n",
+                        rectype,
+                        (unsigned int)(p - tdata->image - OMF_RECORD_HEADER));
+            record_ok = true;
+            break;
     }
 
     return record_ok;
