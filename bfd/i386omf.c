@@ -25,6 +25,15 @@
 #include "libbfd.h"
 #include "strtab.h"
 
+/* Runtime debug output controlled by OMF_DEBUG environment variable.  */
+static bool omf_debug;
+
+static void __attribute__((constructor))
+omf_init_debug (void)
+{
+  omf_debug = getenv ("OMF_DEBUG") != NULL;
+}
+
 #define OMF_RECORD_THEADR      0x80
 #define OMF_RECORD_LHEADR      0x82
 #define OMF_RECORD_COMENT      0x88
@@ -875,7 +884,7 @@ DESCRIPTION
 static bool
 i386omf_read_comdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
 {
-  fprintf(stderr, "i386omf_read_comdef: %p\n", p);
+  if (omf_debug) fprintf(stderr, "i386omf_read_comdef: %p\n", p);
 
   struct i386omf_obj_data* tdata = abfd->tdata.any;
 
@@ -900,7 +909,7 @@ i386omf_read_comdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
       bfd_set_error(bfd_error_wrong_format);
       return false;
     }
-    fprintf(stderr, "COMDEF read: 0%s", extdef->name.data);
+    if (omf_debug) fprintf(stderr, "COMDEF read: 0%s", extdef->name.data);
     p += slen;
     reclen -= slen;
 
@@ -1246,7 +1255,7 @@ i386omf_read_segdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32
         seg->name_index = name_index;
         seg->class_index = class_index;
         seg->overlay_index = overlay_index;
-        _bfd_error_handler(_("SEGDEF name_index:  %x, class_index: %x, overlay_index: %x"),
+        if (omf_debug) _bfd_error_handler(_("SEGDEF name_index:  %x, class_index: %x, overlay_index: %x"),
                             name_index,
                             class_index,
                             overlay_index);
@@ -1466,7 +1475,7 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
             fixdata = bfd_get_8(abfd, p + 2);
             p += 3;                                                           // Advances the pointer p past the processed bytes
             reclen -= 3;                                                      // and decrements reclen accordingly.
-            fprintf(stderr, " FIXUP subrec at [%p]: %02x, M: %02x, location: %02x, offset: %02llx, fixdata: %02llx\n",
+            if (omf_debug) fprintf(stderr, " FIXUP subrec at [%p]: %02x, M: %02x, location: %02x, offset: %02llx, fixdata: %02llx\n",
                     p, subrec, (subrec & OMF_FIXUP_SEGREL) >> 6, location, (unsigned long long)offset, (unsigned long long)fixdata);
 
             if (fixdata & OMF_FIX_DATA_FRAME_THREAD) {
@@ -1643,7 +1652,7 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
             /*if (!(target_method & OMF_FIXUPP_TARGET_NODISP)) {
                 if (!i386omf_read_offset(abfd, &displacement, &p, &reclen,
                                          I386OMF_OFFSET_SIZE_16)) {
-                    fprintf(stderr, "FIXUP at 0x%zx wants displacement but none given [%d]\n",
+                    if (omf_debug) fprintf(stderr, "FIXUP at 0x%zx wants displacement but none given [%d]\n",
                                           q - tdata->image, target);
                     return false;
                 }
@@ -1690,9 +1699,8 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
             reclen--;
 
             i386omf_read_index(abfd, &index, &p, &reclen);
-            _bfd_error_handler(
+            if (omf_debug) _bfd_error_handler(
                     _(" THREAD subrec: %02x, D(%x): %s, data bit5: %x, method: %d - %s, thread number: %d, index: %d"),
-                    //(*_bfd_error_handler)(" THREAD subrec: %02x, D(%x): %s, data bit5: %x, method: %d - %s, thread number: %d, index: %d",
                     threaddata,
                     (threaddata & 0x40) >> 6,
                     ((threaddata & 0x40) >> 6) ? "FRAME" : "TARGET",         // D b6
@@ -1947,8 +1955,7 @@ process_record(bfd *abfd,
                bfd_byte const *p) {
     struct i386omf_obj_data *tdata = abfd->tdata.any;
     bool record_ok;
-    fprintf(stderr, "i386omf process_record rectype: 0x%2x, reclen: %llu\n", rectype, (unsigned long long)reclen);
-    //_bfd_error_handler(_("i386omf process_record rectype: 0x%2x, reclen: %lu"), rectype, reclen);
+    if (omf_debug) fprintf(stderr, "i386omf process_record rectype: 0x%2x, reclen: %llu\n", rectype, (unsigned long long)reclen);
     switch (rectype) {
         case OMF_RECORD_THEADR: /* Translator header. */
             record_ok = i386omf_read_string(abfd, &tdata->module_name,
