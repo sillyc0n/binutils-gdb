@@ -2291,6 +2291,111 @@ i386omf_read_leidata(bfd *abfd, bfd_byte const *p,
 }
 
 /*
+    i386omf_read_comdat
+
+SYNOPSIS
+    static bool i386omf_read_comdat(bfd *abfd, bfd_byte const *p,
+                                    bfd_size_type reclen, int rectype);
+
+DESCRIPTION
+    Reads and processes an OMF COMDAT (0xC2) or COMDAT386 (0xC3) record,
+    which contains communal data that may be duplicated across object files.
+    Parses the segment index, data record offset, selection criteria byte,
+    and data bytes.  Sets last_leidata so subsequent FIXUPP records can
+    attach relocations.
+
+    @param abfd    The BFD file handle.
+    @param p       Pointer to the record data.
+    @param reclen  Length of the record data.
+    @param rectype Record type (0xC2 or 0xC3).
+    @return        true on success, false on error.
+*/
+static bool
+i386omf_read_comdat(bfd *abfd, bfd_byte const *p,
+                    bfd_size_type reclen, int rectype) {
+    struct i386omf_obj_data *tdata = abfd->tdata.any;
+    struct i386omf_segment *segdef;
+    bfd_vma offset;
+    int seg_index;
+
+    if (!i386omf_read_index(abfd, &seg_index, &p, &reclen))
+        return false;
+
+    if (seg_index <= OMF_SEGDEF_NONE) {
+        /* §6.4: COMDAT with no explicit segment.  Create a synthetic
+           segment so subsequent FIXUPP can attach relocations.  */
+        segdef = i386omf_create_comdat_segment(abfd);
+        if (segdef == NULL)
+            return false;
+    } else {
+        segdef = i386omf_find_segment(tdata, seg_index);
+        if (segdef == NULL) {
+            if (seg_index >= OMF_COMDAT_SEGIDX_BASE) {
+                segdef = i386omf_create_comdat_segment(abfd);
+                if (segdef == NULL)
+                    return false;
+            } else {
+                _bfd_error_handler("COMDAT at 0x%lx wants phantom segment [%d]",
+                                   (unsigned long)(p - tdata->image),
+                                   seg_index);
+                bfd_set_error(bfd_error_wrong_format);
+                return false;
+            }
+        }
+    }
+
+    /* §7 item 1: COMDAT is a valid predecessor for FIXUPP.  */
+    tdata->last_leidata = segdef;
+
+    if (!i386omf_read_offset(abfd, &offset, &p, &reclen,
+                             rectype & 1 ? I386OMF_OFFSET_SIZE_32 : I386OMF_OFFSET_SIZE_16))
+        return false;
+
+    segdef->last_data_offset = offset;
+
+    /* Selection criteria byte — consume and discard.
+       Valid values: 0=Match, 1=Any, 2=Largest, 3=Same, 4=Complement.  */
+    if (reclen < 1) {
+        _bfd_error_handler("Truncated COMDAT record at 0x%lx",
+                           (unsigned long)(p - tdata->image));
+        bfd_set_error(bfd_error_wrong_format);
+        return false;
+    }
+    p++;
+    reclen--;
+
+    if (offset + reclen > segdef->asect->size)
+        segdef->asect->size = offset + reclen;
+
+    if ((segdef->asect->flags & SEC_IN_MEMORY) == 0) {
+        segdef->asect->contents = bfd_zalloc(abfd, segdef->asect->size);
+        if (segdef->asect->contents == NULL) {
+            _bfd_error_handler("Out of memory for %s section contents",
+                               bfd_section_name(segdef->asect));
+            return false;
+        }
+        segdef->asect->flags |= SEC_IN_MEMORY;
+    }
+
+    if (offset + reclen > segdef->asect->size
+        || segdef->asect->contents == NULL) {
+        _bfd_error_handler("COMDAT at 0x%lx overflows section %s",
+                           (unsigned long)(p - tdata->image),
+                           bfd_section_name(segdef->asect));
+        bfd_set_error(bfd_error_wrong_format);
+        return false;
+    }
+
+    memcpy(segdef->asect->contents + offset, p, reclen);
+
+    segdef->asect->flags |= (SEC_HAS_CONTENTS |
+                             SEC_LOAD |
+                             SEC_ALLOC);
+
+    return true;
+}
+
+/*
     process_record
 
 SYNOPSIS
@@ -2364,13 +2469,9 @@ process_record(bfd *abfd,
         case OMF_RECORD_LIDATA386:
             record_ok = i386omf_read_leidata(abfd, p, reclen, rectype);
             break;
-        /* §1: COMDAT records are valid predecessors for FIXUPP subrecords
-           (the "nearest preceding data-defining record").  Stubbed — not yet
-           used by this backend, but the FIXUPP error check on last_leidata
-           will reject fixups after COMDAT until this is implemented.  */
         case OMF_RECORD_COMDAT:
         case OMF_RECORD_COMDAT386:
-            record_ok = true; /* TODO, need these for watcom. */
+            record_ok = i386omf_read_comdat(abfd, p, reclen, rectype);
             break;
         case OMF_RECORD_LINSYM:
         case OMF_RECORD_LINSYM386:
