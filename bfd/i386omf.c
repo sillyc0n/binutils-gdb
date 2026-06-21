@@ -239,6 +239,12 @@ omf_init_debug (void)
 
 #define OMF_COMDEF_DATA_SEG_TYPE_FAR   0x61
 #define OMF_COMDEF_DATA_SEG_TYPE_NEAR  0x62
+#define OMF_COMDEF_DATA_TYPE_MIN_BORLAND 0x01
+#define OMF_COMDEF_DATA_TYPE_MAX_BORLAND 0x5F
+
+#define OMF_COMDEF_LENGTH_PREFIX_16BIT 0x81
+#define OMF_COMDEF_LENGTH_PREFIX_24BIT 0x84
+#define OMF_COMDEF_LENGTH_PREFIX_32BIT 0x88
 
 #define W2M(x) ((1 << (x)) - 1)
 
@@ -892,14 +898,121 @@ i386omf_read_modend(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
 }
 
 /*
+    i386omf_read_comdef_length
+
+SYNOPSIS
+    static bool i386omf_read_comdef_length(bfd* abfd, bfd_byte const** p,
+                                           bfd_size_type* reclen, bfd_vma* value);
+
+DESCRIPTION
+    Reads a variable-width COMDEF communal length field per OMF v1.1 §4.4.
+    The first byte is a prefix that determines the width:
+
+        lead 0x00-0x80  →  1 byte,  value = lead
+        lead 0x81       →  3 bytes, value = LE u16
+        lead 0x84       →  4 bytes, value = LE 24-bit
+        lead 0x88       →  5 bytes, value = LE u32
+        other           →  error
+
+    @param abfd   The BFD file handle.
+    @param p      Pointer to current buffer pointer (advanced on success).
+    @param reclen Pointer to remaining record length (decremented on success).
+    @param value  Pointer to store the decoded value.
+    @return       true on success, false on error.
+*/
+static bool
+i386omf_read_comdef_length(bfd* abfd, bfd_byte const** p,
+                           bfd_size_type* reclen, bfd_vma* value)
+{
+  struct i386omf_obj_data* tdata = abfd->tdata.any;
+
+  if (*reclen < 1)
+  {
+    (*_bfd_error_handler)("COMDEF length truncated at 0x%lx",
+                          *p - tdata->image);
+    bfd_set_error(bfd_error_wrong_format);
+    return false;
+  }
+
+  unsigned int lead = bfd_get_8(abfd, *p);
+
+  if (lead <= 0x80)
+  {
+    *value = lead;
+    *p += 1;
+    *reclen -= 1;
+  }
+  else if (lead == OMF_COMDEF_LENGTH_PREFIX_16BIT)
+  {
+    if (*reclen < 3)
+    {
+      (*_bfd_error_handler)("COMDEF 16-bit length truncated at 0x%lx",
+                            *p - tdata->image);
+      bfd_set_error(bfd_error_wrong_format);
+      return false;
+    }
+    *value = bfd_get_16(abfd, *p + 1);
+    *p += 3;
+    *reclen -= 3;
+  }
+  else if (lead == OMF_COMDEF_LENGTH_PREFIX_24BIT)
+  {
+    if (*reclen < 4)
+    {
+      (*_bfd_error_handler)("COMDEF 24-bit length truncated at 0x%lx",
+                            *p - tdata->image);
+      bfd_set_error(bfd_error_wrong_format);
+      return false;
+    }
+    *value = bfd_get_8(abfd, *p + 1)
+           | (bfd_get_8(abfd, *p + 2) << 8)
+           | (bfd_get_8(abfd, *p + 3) << 16);
+    *p += 4;
+    *reclen -= 4;
+  }
+  else if (lead == OMF_COMDEF_LENGTH_PREFIX_32BIT)
+  {
+    if (*reclen < 5)
+    {
+      (*_bfd_error_handler)("COMDEF 32-bit length truncated at 0x%lx",
+                            *p - tdata->image);
+      bfd_set_error(bfd_error_wrong_format);
+      return false;
+    }
+    *value = bfd_get_32(abfd, *p + 1);
+    *p += 5;
+    *reclen -= 5;
+  }
+  else
+  {
+    (*_bfd_error_handler)("COMDEF invalid length prefix 0x%02x at 0x%lx",
+                          lead, (unsigned long)(*p - tdata->image));
+    bfd_set_error(bfd_error_wrong_format);
+    return false;
+  }
+
+  return true;
+}
+
+/*
     i386omf_read_comdef
 
 SYNOPSIS
     static bool i386omf_read_comdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen);
 
 DESCRIPTION
-    Reads and processes an OMF COMDEF record, which defines communal variables.
-    Adds each symbol to the externs string table. Reports errors for malformed records.
+    Reads and processes an OMF COMDEF record (0xB0), which defines communal
+    variables.  Per OMF v1.1 §"B0H COMDEF—Communal Names Definition Record":
+
+      Each entry: [Communal Name] [Type Index] [Data Type] [Communal Length(s)]
+
+    Data Type determines the layout:
+      0x61 (FAR)   →  count + element_size (two variable-width fields)
+      0x62 (NEAR)  →  total size (one variable-width field)
+      0x01-0x5F    →  Borland segment index (no length follows)
+
+    All entries share the external index space with EXTDEF/LEXTDEF/LCOMDEF
+    records per §8 "FIXUP ordering".  Symbols are added to tdata->externs.
 
     @param abfd   The BFD file handle.
     @param p      Pointer to the record data.
@@ -909,73 +1022,89 @@ DESCRIPTION
 static bool
 i386omf_read_comdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
 {
-  if (omf_debug) fprintf(stderr, "i386omf_read_comdef: %p\n", p);
-
   struct i386omf_obj_data* tdata = abfd->tdata.any;
 
   while (reclen)
   {
     struct i386omf_symbol* extdef;
     bfd_size_type slen;
-    int data_segment_type;
-
-    extdef = bfd_alloc(abfd, sizeof(*extdef));
-    if (extdef == NULL)
-      return false;
+    int data_type;
 
     extdef = (struct i386omf_symbol*) bfd_make_empty_symbol(abfd);
+    if (extdef == NULL)
+      return false;
     abfd->flags |= HAS_SYMS;
 
+    /* Communal Name */
     slen = i386omf_read_string(abfd, &extdef->name, p, reclen);
     if (slen < 1)
-    {
-      _bfd_error_handler("COMDEF read error: 0x%llx",
-                         (unsigned long long) slen);
-      bfd_set_error(bfd_error_wrong_format);
       return false;
-    }
-    if (omf_debug) fprintf(stderr, "COMDEF read: 0%s", extdef->name.data);
     p += slen;
     reclen -= slen;
 
+    /* Type Index (not inspected by linkers, per spec) */
     if (!i386omf_read_index(abfd, &extdef->type_index, &p, &reclen))
       return false;
 
-    data_segment_type = bfd_get_8(abfd, p++);
-
-    if (data_segment_type == OMF_COMDEF_DATA_SEG_TYPE_FAR)
+    /* Data Type byte */
+    if (reclen < 1)
     {
-      p++;
-      reclen -= 1;
+      (*_bfd_error_handler)("COMDEF data type truncated at 0x%lx",
+                            p - tdata->image);
+      bfd_set_error(bfd_error_wrong_format);
+      return false;
     }
-
+    data_type = bfd_get_8(abfd, p);
     p++;
-    reclen -= 2;
+    reclen--;
 
     extdef->base.name = extdef->name.data;
-    /* Maybe? extdef->base.flags |= BSF_WEAK; */
-    /* extdef->base.flags |= SEC_ALLOC;*/
-    extdef->base.value = 0;
+    extdef->base.flags |= BSF_GLOBAL;
     extdef->seg = NULL;
-    extdef->base.section = bfd_und_section_ptr;
-    // extdef->base.section = bfd_com_section_ptr;
+    extdef->base.section = bfd_com_section_ptr;
+
+    switch (data_type)
+    {
+      case OMF_COMDEF_DATA_SEG_TYPE_FAR:
+      {
+        /* FAR: count + element_size, each in variable-width encoding. */
+        bfd_vma count, element_size;
+
+        if (!i386omf_read_comdef_length(abfd, &p, &reclen, &count)
+            || !i386omf_read_comdef_length(abfd, &p, &reclen, &element_size))
+          return false;
+
+        extdef->base.value = count * element_size;
+        break;
+      }
+      case OMF_COMDEF_DATA_SEG_TYPE_NEAR:
+      {
+        /* NEAR: single total size in variable-width encoding. */
+        if (!i386omf_read_comdef_length(abfd, &p, &reclen, &extdef->base.value))
+          return false;
+        break;
+      }
+      default:
+        if (data_type >= OMF_COMDEF_DATA_TYPE_MIN_BORLAND
+            && data_type <= OMF_COMDEF_DATA_TYPE_MAX_BORLAND)
+        {
+          /* Borland segment index — no length field follows.  */
+          extdef->base.value = data_type;
+        }
+        else
+        {
+          (*_bfd_error_handler)("COMDEF unknown data type 0x%02x at 0x%lx",
+                                data_type, (unsigned long)(p - tdata->image));
+          bfd_set_error(bfd_error_wrong_format);
+          return false;
+        }
+        break;
+    }
 
     strtab_add(tdata->externs, extdef);
   }
 
   return true;
-
-  /*External    Ordered by occurrence of EXTDEF, COMDEF,
-  Symbols     LEXTDEF, and LCOMDEF records and symbols
-             within each. Referenced as an external name
-             index (in FIXUP subrecords).
-
-
-   COMDEF, LCOMDEF, EXTDEF, LEXTDEF, and CEXTDEF records
-  NOTE: This group of records is indexed together, so external name
-  index fields in FIXUPP records may refer to any of the record
-  types listed.
-             */
 }
 
 /*

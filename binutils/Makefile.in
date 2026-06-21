@@ -198,7 +198,7 @@ am__EXEEXT_16 = cxxfilt$(EXEEXT)
 am__EXEEXT_17 = $(am__EXEEXT_14) $(am__EXEEXT_15) $(am__EXEEXT_16)
 am__EXEEXT_18 = bfdtest1$(EXEEXT)
 am__EXEEXT_19 = bfdtest2$(EXEEXT)
-am__EXEEXT_20 = testsuite/gentestdlls$(EXEEXT)
+am__EXEEXT_20 = testsuite/gentestdlls$(EXEEXT) testsuite/gentestomf$(EXEEXT)
 am__EXEEXT_21 = $(am__EXEEXT_18) $(am__EXEEXT_19) $(am__EXEEXT_20)
 PROGRAMS = $(bin_PROGRAMS) $(noinst_PROGRAMS)
 am__objects_1 = bucomm.$(OBJEXT) version.$(OBJEXT) filemode.$(OBJEXT)
@@ -278,10 +278,15 @@ am_sysdump_OBJECTS = sysdump.$(OBJEXT) $(am__objects_1)
 sysdump_OBJECTS = $(am_sysdump_OBJECTS)
 sysdump_LDADD = $(LDADD)
 testsuite_gentestdlls_SOURCES = testsuite/gentestdlls.c
+testsuite_gentestomf_SOURCES = testsuite/gentestomf.c
 am__dirstamp = $(am__leading_dot)dirstamp
 testsuite_gentestdlls_OBJECTS = testsuite/gentestdlls.$(OBJEXT)
+testsuite_gentestomf_OBJECTS = testsuite/gentestomf.$(OBJEXT)
 testsuite_gentestdlls_LDADD = $(LDADD)
 testsuite_gentestdlls_DEPENDENCIES = $(BFDLIB) $(LIBIBERTY) \
+	$(am__DEPENDENCIES_1)
+testsuite_gentestomf_LDADD = $(LDADD)
+testsuite_gentestomf_DEPENDENCIES = $(BFDLIB) $(LIBIBERTY) \
 	$(am__DEPENDENCIES_1)
 am_windmc_OBJECTS = windmc.$(OBJEXT) mcparse.$(OBJEXT) mclex.$(OBJEXT) \
 	winduni.$(OBJEXT) $(am__objects_1)
@@ -379,7 +384,7 @@ SOURCES = $(addr2line_SOURCES) $(ar_SOURCES) $(EXTRA_ar_SOURCES) \
 	$(EXTRA_objdump_SOURCES) $(ranlib_SOURCES) $(readelf_SOURCES) \
 	$(size_SOURCES) $(srconv_SOURCES) $(strings_SOURCES) \
 	$(strip_new_SOURCES) $(sysdump_SOURCES) \
-	testsuite/gentestdlls.c $(windmc_SOURCES) $(windres_SOURCES)
+	testsuite/gentestdlls.c testsuite/gentestomf.c $(windmc_SOURCES) $(windres_SOURCES)
 AM_V_DVIPS = $(am__v_DVIPS_@AM_V@)
 am__v_DVIPS_ = $(am__v_DVIPS_@AM_DEFAULT_V@)
 am__v_DVIPS_0 = @echo "  DVIPS   " $@;
@@ -692,7 +697,9 @@ EXTRA_SCRIPTS = embedspu
 BFDTEST1_PROG = bfdtest1
 BFDTEST2_PROG = bfdtest2
 GENTESTDLLS_PROG = testsuite/gentestdlls
-TEST_PROGS = $(BFDTEST1_PROG) $(BFDTEST2_PROG) $(GENTESTDLLS_PROG)
+GENTESTOMF_PROG = testsuite/gentestomf
+TEST_PROGS = $(BFDTEST1_PROG) $(BFDTEST2_PROG) $(GENTESTDLLS_PROG) \
+	     $(GENTESTOMF_PROG)
 RENAMED_PROGS = $(NM_PROG) $(STRIP_PROG) $(DEMANGLER_PROG)
 
 # Stuff that goes in tooldir/ if appropriate.
@@ -1089,10 +1096,15 @@ testsuite/$(DEPDIR)/$(am__dirstamp):
 	@: > testsuite/$(DEPDIR)/$(am__dirstamp)
 testsuite/gentestdlls.$(OBJEXT): testsuite/$(am__dirstamp) \
 	testsuite/$(DEPDIR)/$(am__dirstamp)
+testsuite/gentestomf.$(OBJEXT): testsuite/$(am__dirstamp) \
+	testsuite/$(DEPDIR)/$(am__dirstamp)
 
 testsuite/gentestdlls$(EXEEXT): $(testsuite_gentestdlls_OBJECTS) $(testsuite_gentestdlls_DEPENDENCIES) $(EXTRA_testsuite_gentestdlls_DEPENDENCIES) testsuite/$(am__dirstamp)
 	@rm -f testsuite/gentestdlls$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(testsuite_gentestdlls_OBJECTS) $(testsuite_gentestdlls_LDADD) $(LIBS)
+testsuite/gentestomf$(EXEEXT): $(testsuite_gentestomf_OBJECTS) $(testsuite_gentestomf_DEPENDENCIES) $(EXTRA_testsuite_gentestomf_DEPENDENCIES) testsuite/$(am__dirstamp)
+	@rm -f testsuite/gentestomf$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(testsuite_gentestomf_OBJECTS) $(testsuite_gentestomf_LDADD) $(LIBS)
 mcparse.h: mcparse.c
 	@if test ! -f $@; then rm -f mcparse.c; else :; fi
 	@if test ! -f $@; then $(MAKE) $(AM_MAKEFLAGS) mcparse.c; else :; fi
@@ -1215,6 +1227,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/winduni.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/wrstabs.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@testsuite/$(DEPDIR)/gentestdlls.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@testsuite/$(DEPDIR)/gentestomf.Po@am__quote@
 
 .c.o:
 @am__fastdepCC_TRUE@	$(AM_V_CC)depbase=`echo $@ | sed 's|[^/]*$$|$(DEPDIR)/&|;s|\.o$$||'`;\

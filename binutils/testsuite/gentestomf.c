@@ -297,6 +297,67 @@ ob_modend (struct omf_buf *ob, int is_32bit, uint8_t flags)
   ob_write (ob, rec, n);
 }
 
+/* Append a variable-width communal length to buf at pos.
+   Returns new pos.  Encoding per §4.4:
+     0x00-0x80 → 1 byte, 0x81+LE16 → 3, 0x84+LE24 → 4, 0x88+LE32 → 5.  */
+static int
+ob_comdef_len (uint8_t *buf, int pos, uint32_t val)
+{
+  if (val <= 0x80)
+    { buf[pos++] = val; }
+  else if (val <= 0xffff)
+    {
+      buf[pos++] = 0x81;
+      put16le (buf + pos, val);
+      pos += 2;
+    }
+  else if (val <= 0xffffff)
+    {
+      buf[pos++] = 0x84;
+      buf[pos++] = val & 0xff;
+      buf[pos++] = (val >> 8) & 0xff;
+      buf[pos++] = (val >> 16) & 0xff;
+    }
+  else
+    {
+      buf[pos++] = 0x88;
+      put32le (buf + pos, val);
+      pos += 4;
+    }
+  return pos;
+}
+
+/* Append a COMDEF entry (NEAR or FAR) to buf at pos.
+   Returns new pos.  */
+static int
+ob_comdef_near (uint8_t *buf, int pos, const char *name, int type_idx,
+		uint32_t size)
+{
+  int slen = strlen (name);
+  buf[pos++] = slen;
+  memcpy (buf + pos, name, slen);
+  pos += slen;
+  pos += omf_index (buf + pos, type_idx);
+  buf[pos++] = 0x62;		/* NEAR */
+  pos = ob_comdef_len (buf, pos, size);
+  return pos;
+}
+
+static int
+ob_comdef_far (uint8_t *buf, int pos, const char *name, int type_idx,
+	       uint32_t count, uint32_t elem_size)
+{
+  int slen = strlen (name);
+  buf[pos++] = slen;
+  memcpy (buf + pos, name, slen);
+  pos += slen;
+  pos += omf_index (buf + pos, type_idx);
+  buf[pos++] = 0x61;		/* FAR */
+  pos = ob_comdef_len (buf, pos, count);
+  pos = ob_comdef_len (buf, pos, elem_size);
+  return pos;
+}
+
 /* Write a FIXUPP (0x9C) or FIXUPP386 (0x9D) with the given subrecord bytes.
    Subrecords are already fully assembled (including their internal fields
    and following data).  The checksum is computed over the entire record.  */
@@ -831,6 +892,82 @@ gen_error_f3_frame (const char *outdir)
 }
 
 /* ------------------------------------------------------------------ */
+/*  COMDEF test objects                                                 */
+/* ------------------------------------------------------------------ */
+
+static void
+gen_comdef (const char *outdir)
+{
+  /* 1. COMDEF with NEAR and FAR entries — valid.  */
+  {
+    struct omf_buf ob;
+    ob.len = 0;
+
+    ob_theadr (&ob, "comdef");
+    ob_lnames (&ob, "_TEXT");
+    ob_segdef (&ob, 0, 16, 5, 2, 1, 0, 0);
+
+    /* Build COMDEF payload with 3 entries:
+         _var   (NEAR, size 2)
+         _var2  (NEAR, size 32768)
+         _var3  (FAR,  count=400, element_size=1)  */
+    uint8_t payload[256];
+    int pos = 0;
+    pos = ob_comdef_near (payload, pos, "_var", 0, 2);
+    pos = ob_comdef_near (payload, pos, "_var2", 0, 32768);
+    pos = ob_comdef_far  (payload, pos, "_var3", 0, 400, 1);
+
+    uint8_t rec[512];
+    int n = omf_record (rec, 0xb0, payload, pos);
+    ob_write (&ob, rec, n);
+
+    ob_modend (&ob, 0, 0);
+
+    char path[256];
+    snprintf (path, sizeof path, "%s/comdef.o", outdir);
+    FILE *f = fopen (path, "wb");
+    if (!f) { perror (path); exit (IO_ERROR); }
+    fwrite (ob.data, 1, ob.len, f);
+    fclose (f);
+    printf ("  wrote %s (%d bytes)\n", path, ob.len);
+  }
+
+  /* 2. COMDEF with unknown data type — error.  */
+  {
+    struct omf_buf ob;
+    ob.len = 0;
+
+    ob_theadr (&ob, "comdef_bad_type");
+    ob_lnames (&ob, "_TEXT");
+
+    uint8_t payload[256];
+    int pos = 0;
+    pos = ob_comdef_near (payload, pos, "_bad", 0, 4);
+
+    /* Corrupt the data type byte from 0x62 to 0x63.  */
+    /* The payload structure at this point is:
+         name_len name_bytes type_idx data_type length
+       The data_type byte is at offset pos - 2 (before the length byte).
+       Walk back: len(1) + name(4) + type_idx(1) = 6, so data_type at index 6. */
+    payload[6] = 0x63; /* invalid data type */
+
+    uint8_t rec[512];
+    int n = omf_record (rec, 0xb0, payload, pos);
+    ob_write (&ob, rec, n);
+
+    ob_modend (&ob, 0, 0);
+
+    char path[256];
+    snprintf (path, sizeof path, "%s/error_comdef_bad_type.o", outdir);
+    FILE *f = fopen (path, "wb");
+    if (!f) { perror (path); exit (IO_ERROR); }
+    fwrite (ob.data, 1, ob.len, f);
+    fclose (f);
+    printf ("  wrote %s (%d bytes)\n", path, ob.len);
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /*  main                                                                */
 /* ------------------------------------------------------------------ */
 
@@ -869,6 +1006,7 @@ main (int argc, char **argv)
   gen_error_undefined_thread (outdir);
   gen_error_bad_location (outdir);
   gen_error_f3_frame (outdir);
+  gen_comdef (outdir);
 
   printf ("gentestomf: done\n");
   return 0;

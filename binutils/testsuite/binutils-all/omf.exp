@@ -214,3 +214,43 @@ if { [regexp "invalid explicit frame method F3" $got] } {
 } else {
     fail $test
 }
+
+# -----------------------------------------------------------------------
+#  COMDEF tests
+# -----------------------------------------------------------------------
+set test "OMF comdef: NEAR symbol"
+set got [binutils_run $OBJDUMP "-x tmpdir/comdef.o"]
+if { [regexp "file format i386omf" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF comdef: HAS_SYMS flag"
+if { [regexp "HAS_SYMS" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF comdef: NEAR symbol _var"
+if { [regexp "_var" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF comdef: FAR symbol _var3"
+if { [regexp "_var3" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF error: COMDEF bad data type"
+set got [binutils_run $OBJDUMP "-x tmpdir/error_comdef_bad_type.o"]
+if { [regexp "file format not recognized" $got] } {
+    pass $test
+} else {
+    fail $test
+}
