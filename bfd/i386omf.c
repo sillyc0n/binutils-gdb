@@ -599,13 +599,11 @@ DESCRIPTION
     @param len Number of bytes to print.
 */
 static void
-hexdump(bfd *abfd, bfd_byte const* p, bfd_size_type len)
+hexdump(bfd_byte const* p, bfd_size_type len)
 {
   bfd_size_type i;
   char* s;
   size_t amt;
-
-  (void)abfd;
 
   /* XXX - 1000 is the size of _bfd_default_error_handler()'s buffer. */
   if (len > 1000 / 3)
@@ -624,7 +622,7 @@ hexdump(bfd *abfd, bfd_byte const* p, bfd_size_type len)
     return;
   for (i = 0; i < len; i++)
   {
-    sprintf(s + i * 3, " %02x", (unsigned int) bfd_get_8(abfd, p + i));
+    sprintf(s + i * 3, " %02x", (unsigned int) p[i]);
   }
   if (omf_debug) fprintf(stderr, "%s", s);
   free(s);
@@ -3289,7 +3287,7 @@ i386omf_readobject (bfd *abfd, bfd_size_type osize, unsigned long *machine)
                 default:
                     (*_bfd_error_handler)("process_record() failed at 0x%lx",
                                           p - tdata->image);
-                    hexdump(abfd, p, reclen + OMF_RECORD_HEADER);
+                    hexdump(p, reclen + OMF_RECORD_HEADER);
                     (*_bfd_error_handler)("BFD error = %d", bfd_get_error());
                     return false;
             }
