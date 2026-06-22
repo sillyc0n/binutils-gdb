@@ -3,6 +3,8 @@
    Written by Bernd Jendrissek <bernd.jendrissek@gmail.com>
    Based on bfd/binary.c.
 
+   Copyright (C) 2024-2026 sillyc0n <sillyc0n@proton.me>.
+
    This file is part of BFD, the Binary File Descriptor library.
 
    This program is free software; you can redistribute it and/or modify
@@ -2271,92 +2273,396 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
     return true;
 }
 
+/* LIDATA expansion context: a growable byte buffer for assembling
+   one record's fully expanded data before a single bounds-checked
+   copy into the section (see §6.1 of the LIDATA spec).  */
+struct i386omf_bytebuf
+{
+  bfd_byte      *data;
+  bfd_size_type  len;
+  bfd_size_type  cap;
+};
+
+static bool
+i386omf_bytebuf_append (struct i386omf_bytebuf *buf,
+                         bfd_byte const *src, bfd_size_type n)
+{
+  if (buf->len + n > buf->cap)
+    {
+      bfd_size_type newcap = buf->cap ? buf->cap * 2 : 256;
+      while (newcap < buf->len + n)
+        newcap *= 2;
+      bfd_byte *p = bfd_realloc (buf->data, newcap);
+      if (p == NULL)
+        return false;
+      buf->data = p;
+      buf->cap = newcap;
+    }
+  memcpy (buf->data + buf->len, src, n);
+  buf->len += n;
+  return true;
+}
+
+/* Maximum recursive nesting depth for a LIDATA Data Block field.
+   This is an implementation safety bound, not a TIS-specified limit.
+   64 levels is far beyond any legitimate translator output (canonical
+   dup()-style use cases nest only 1-2 levels deep).  */
+#define I386OMF_LIDATA_MAX_DEPTH 64
+
 /*
-    i386omf_add_section_lidata
+    i386omf_expand_lidata_block
 
 SYNOPSIS
-    static bfd_size_type i386omf_add_section_lidata(bfd *abfd, struct bfd_section *asect, bfd_vma *offset, bfd_byte const *p, bfd_size_type reclen);
+    static bool i386omf_expand_lidata_block(bfd *abfd, bfd_byte const *p,
+                                             bfd_size_type avail,
+                                             bfd_size_type *consumed,
+                                             struct i386omf_bytebuf *out,
+                                             int is_32, int depth);
 
 DESCRIPTION
-    Recursively reads and adds LIDATA (repeated data) blocks to a section's contents.
-    Handles both simple and nested LIDATA blocks. Reports errors for malformed or overflowing data.
+    Recursively parses and expands exactly one LIDATA Data Block field (§3).
+    Appends the fully expanded bytes to *out.  Sets *consumed to the
+    number of bytes read from p for this one Data Block field.
 
-    @param abfd   The BFD file handle.
-    @param asect  The section to add data to.
-    @param offset Pointer to the current offset in the section.
-    @param p      Pointer to the record data.
-    @param reclen Length of the record data.
-    @return       Number of bytes consumed, or 0 on error.
+    @param abfd     The BFD file handle.
+    @param p        Pointer to the start of this Data Block field.
+    @param avail    Bytes available at p.
+    @param consumed Out: bytes consumed for this one Data Block.
+    @param out      Expanded bytes are appended here.
+    @param is_32    Non-zero if Repeat Count is 32-bit (0xA3 record).
+    @param depth    Current recursion depth.
+    @return         true on success, false on error.
 */
-static bfd_size_type
-i386omf_add_section_lidata(bfd *abfd, struct bfd_section *asect,
-                           bfd_vma *offset, bfd_byte const *p,
-                           bfd_size_type reclen) {
-    struct i386omf_obj_data *tdata = abfd->tdata.any;
-    bfd_size_type block_count;
-    bfd_size_type eaten = 0;
+static bool
+i386omf_expand_lidata_block (bfd *abfd, bfd_byte const *p,
+                              bfd_size_type avail,
+                              bfd_size_type *consumed,
+                              struct i386omf_bytebuf *out,
+                              int is_32, int depth)
+{
+  struct i386omf_obj_data *tdata = abfd->tdata.any;
+  bfd_size_type repeat_count;
+  bfd_size_type block_count;
+  bfd_size_type eaten = 0;
 
-    if (reclen < 2 + 2) {
-        (*_bfd_error_handler)("LIDATA data block truncated at 0x%lx.",
-                              p - tdata->image);
-        bfd_set_error(bfd_error_wrong_format);
-        return false;
+  if (depth > I386OMF_LIDATA_MAX_DEPTH)
+    {
+      _bfd_error_handler ("LIDATA nesting exceeds the implementation "
+                           "limit of %d levels at 0x%lx",
+                           I386OMF_LIDATA_MAX_DEPTH,
+                           (unsigned long)(p - tdata->image));
+      bfd_set_error (bfd_error_wrong_format);
+      return false;
     }
 
-    bfd_get_16(abfd, p);
-    eaten += 2;
-    block_count = bfd_get_16(abfd, p + eaten);
-    eaten += 2;
+  /* Repeat Count width depends on record type (is_32).  Block Count
+     is always 16-bit per §4 constraint #2.  */
+  if (is_32)
+    {
+      if (avail < 6)
+        {
+          _bfd_error_handler ("LIDATA data block truncated at 0x%lx",
+                               (unsigned long)(p - tdata->image));
+          bfd_set_error (bfd_error_wrong_format);
+          return false;
+        }
+      repeat_count = bfd_get_32 (abfd, p);
+      eaten += 4;
+    }
+  else
+    {
+      if (avail < 4)
+        {
+          _bfd_error_handler ("LIDATA data block truncated at 0x%lx",
+                               (unsigned long)(p - tdata->image));
+          bfd_set_error (bfd_error_wrong_format);
+          return false;
+        }
+      repeat_count = bfd_get_16 (abfd, p);
+      eaten += 2;
+    }
 
-    p += eaten;
-    reclen -= eaten;
+  block_count = bfd_get_16 (abfd, p + eaten);
+  eaten += 2;
 
-    if (block_count == 0) {
-        /* Recursive exit condition. */
-        int licount;
+  p     += eaten;
+  avail -= eaten;
 
-        licount = bfd_get_8(abfd, p);
+  if (block_count == 0)
+    {
+      /* ── Leaf case: 1-byte count + count data bytes ──── */
+      bfd_size_type i;
+      int licount;
 
-        if ((asect->size < *offset)
-            || (asect->size - *offset < (bfd_size_type) licount)) {
-            _bfd_error_handler("LIDATA at 0x%lx overflows section %s",
-                                    (unsigned long)(p - tdata->image),
-                                    bfd_section_name(asect));
-            bfd_set_error(bfd_error_wrong_format);
-            return 0;
+      if (avail < 1)
+        {
+          _bfd_error_handler ("LIDATA leaf content truncated at 0x%lx",
+                               (unsigned long)(p - tdata->image));
+          bfd_set_error (bfd_error_wrong_format);
+          return false;
         }
 
-        memcpy(asect->contents + *offset, p + 1, licount);
-        *offset += licount;
-        eaten += licount + 1;
-    } else {
-        /* Recursive definition: data block contains other data blocks. */
-        while (block_count--) {
-            bfd_size_type subeaten;
+      licount = bfd_get_8 (abfd, p);
 
-            subeaten = i386omf_add_section_lidata(abfd, asect, offset,
-                                                  p, reclen);
-            if (!subeaten)
-                return 0;
+      if (avail < (bfd_size_type)(1 + licount))
+        {
+          _bfd_error_handler ("LIDATA leaf content truncated at 0x%lx "
+                               "(declares %d bytes, only %lu available)",
+                               (unsigned long)(p - tdata->image),
+                               licount, (unsigned long)(avail - 1));
+          bfd_set_error (bfd_error_wrong_format);
+          return false;
+        }
 
-            if (subeaten > reclen) {
-                _bfd_error_handler("LIDATA at 0x%lx overflows section %s",
-                                    (unsigned long)(p - tdata->image),
-                                    bfd_section_name(asect));
-                bfd_set_error(bfd_error_wrong_format);
-                return 0;
+      for (i = 0; i < repeat_count; i++)
+        {
+          if (!i386omf_bytebuf_append (out, p + 1, (bfd_size_type)licount))
+            {
+              _bfd_error_handler ("Out of memory expanding LIDATA at 0x%lx",
+                                   (unsigned long)(p - tdata->image));
+              bfd_set_error (bfd_error_no_memory);
+              return false;
+            }
+        }
+
+      eaten += 1 + (bfd_size_type)licount;
+    }
+  else
+    {
+      /* ── Recursive case: Block Count child Data Block fields ────
+       *
+       * Children are expanded and concatenated FIRST into a temporary
+       * buffer.  Only the resulting concatenation, as a whole, is
+       * repeated Repeat Count times (§3.1 correctness property).  */
+      struct i386omf_bytebuf children = { NULL, 0, 0 };
+      bfd_size_type i;
+      bfd_byte const *child_p = p;
+      bfd_size_type   child_avail = avail;
+
+      for (i = 0; i < block_count; i++)
+        {
+          bfd_size_type child_consumed = 0;
+
+          if (!i386omf_expand_lidata_block (abfd, child_p, child_avail,
+                                             &child_consumed, &children,
+                                             is_32, depth + 1))
+            {
+              free (children.data);
+              return false;
             }
 
-            p += subeaten;
-            reclen -= subeaten;
+          if (child_consumed > child_avail)
+            {
+              _bfd_error_handler ("LIDATA internal consistency error "
+                                   "at 0x%lx",
+                                   (unsigned long)(child_p - tdata->image));
+              bfd_set_error (bfd_error_wrong_format);
+              free (children.data);
+              return false;
+            }
+
+          child_p     += child_consumed;
+          child_avail -= child_consumed;
+          eaten       += child_consumed;
         }
-        if (reclen)
-            _bfd_error_handler("Leftover LIDATA at 0x%lx in section %s",
-                                (unsigned long)(p - tdata->image),
-                                bfd_section_name(asect));
+
+      for (i = 0; i < repeat_count; i++)
+        {
+          if (!i386omf_bytebuf_append (out, children.data, children.len))
+            {
+              _bfd_error_handler ("Out of memory expanding LIDATA at 0x%lx",
+                                   (unsigned long)(p - tdata->image));
+              bfd_set_error (bfd_error_no_memory);
+              free (children.data);
+              return false;
+            }
+        }
+
+      free (children.data);
     }
 
-    return eaten;
+  *consumed = eaten;
+  return true;
+}
+
+/*
+    i386omf_add_expanded_lidata
+
+SYNOPSIS
+    static bool i386omf_add_expanded_lidata(bfd *abfd,
+                                             struct bfd_section *asect,
+                                             bfd_vma offset,
+                                             bfd_byte const *data,
+                                             bfd_size_type len);
+
+DESCRIPTION
+    Copies a fully expanded LIDATA byte sequence into a section's
+    contents at the given offset, lazily allocating the section's
+    backing storage if needed.
+
+    @param abfd    The BFD file handle.
+    @param asect   The destination section.
+    @param offset  Byte offset within the section to write at.
+    @param data    Pointer to the expanded byte sequence.
+    @param len     Length of the expanded byte sequence.
+    @return        true on success, false on error.
+*/
+static bool
+i386omf_add_expanded_lidata (bfd *abfd, struct bfd_section *asect,
+                              bfd_vma offset, bfd_byte const *data,
+                              bfd_size_type len)
+{
+  if ((asect->flags & SEC_IN_MEMORY) == 0)
+    {
+      asect->contents = bfd_zalloc (abfd, asect->size);
+      if (asect->contents == NULL)
+        {
+          _bfd_error_handler ("Out of memory for %s section contents",
+                               bfd_section_name (asect));
+          return false;
+        }
+      asect->flags |= SEC_IN_MEMORY;
+    }
+
+  if ((asect->size < offset) || (asect->size - offset < len))
+    {
+      _bfd_error_handler ("Expanded LIDATA overflows section %s "
+                           "(offset 0x%lx, length 0x%lx, section size 0x%lx)",
+                           bfd_section_name (asect),
+                           (unsigned long)offset,
+                           (unsigned long)len,
+                           (unsigned long)asect->size);
+      bfd_set_error (bfd_error_wrong_format);
+      return false;
+    }
+
+  memcpy (asect->contents + offset, data, len);
+  return true;
+}
+
+/*
+    i386omf_read_lidata
+
+SYNOPSIS
+    static bool i386omf_read_lidata(bfd *abfd, bfd_byte const *p,
+                                     bfd_size_type reclen, int rectype);
+
+DESCRIPTION
+    Reads an OMF LIDATA (0xA2) or LIDATA386 (0xA3) record and expands
+    its iterated data block into the target segment's section contents.
+    Expansion uses a scratch buffer for correctness (§6.1 of spec).
+
+    @param abfd    The BFD file handle.
+    @param p       Pointer to the record body, after the 3-byte header.
+    @param reclen  Length of the record body, excluding checksum.
+    @param rectype OMF_RECORD_LIDATA or OMF_RECORD_LIDATA386.
+    @return        true on success, false on error.
+*/
+static bool
+i386omf_read_lidata (bfd *abfd, bfd_byte const *p,
+                      bfd_size_type reclen, int rectype)
+{
+  struct i386omf_obj_data *tdata = abfd->tdata.any;
+  struct i386omf_segment  *segdef;
+  bfd_vma  offset;
+  int      seg_index;
+  int      is_32 = rectype & 1;
+
+  if (!i386omf_read_index (abfd, &seg_index, &p, &reclen))
+    return false;
+
+  if (seg_index <= OMF_SEGDEF_NONE)
+    {
+      _bfd_error_handler ("LIDATA at 0x%lx has no segment "
+                           "(segment index must be nonzero)",
+                           (unsigned long)(p - tdata->image));
+      bfd_set_error (bfd_error_wrong_format);
+      return false;
+    }
+
+  segdef = i386omf_find_segment (tdata, seg_index);
+  if (segdef == NULL)
+    {
+      if (seg_index >= OMF_COMDAT_SEGIDX_BASE)
+        {
+          segdef = i386omf_create_comdat_segment (abfd);
+          if (segdef == NULL)
+            return false;
+        }
+      else
+        {
+          _bfd_error_handler ("LIDATA at 0x%lx wants phantom segment [%d]",
+                               (unsigned long)(p - tdata->image),
+                               seg_index);
+          bfd_set_error (bfd_error_wrong_format);
+          return false;
+        }
+    }
+
+  tdata->last_leidata = segdef;
+
+  if (!i386omf_read_offset (abfd, &offset, &p, &reclen,
+                             is_32 ? I386OMF_OFFSET_SIZE_32
+                                   : I386OMF_OFFSET_SIZE_16))
+    return false;
+
+  segdef->last_data_offset = offset;
+
+  struct i386omf_bytebuf expanded = { NULL, 0, 0 };
+  bfd_size_type consumed = 0;
+
+  if (!i386omf_expand_lidata_block (abfd, p, reclen, &consumed,
+                                     &expanded, is_32, 0))
+    {
+      free (expanded.data);
+      return false;
+    }
+
+  if (consumed != reclen)
+    {
+      _bfd_error_handler ("LIDATA at 0x%lx has %lu leftover byte(s) "
+                           "after the iterated data block",
+                           (unsigned long)(p - tdata->image),
+                           (unsigned long)(reclen - consumed));
+      bfd_set_error (bfd_error_wrong_format);
+      free (expanded.data);
+      return false;
+    }
+
+  if (offset + expanded.len > segdef->asect->size)
+    {
+      if (seg_index >= OMF_COMDAT_SEGIDX_BASE)
+        {
+          segdef->asect->size = offset + expanded.len;
+        }
+      else
+        {
+          _bfd_error_handler ("LIDATA at 0x%lx expands to %lu bytes at "
+                               "offset 0x%lx, overflowing section %s "
+                               "(declared size 0x%lx)",
+                               (unsigned long)(p - tdata->image),
+                               (unsigned long)expanded.len,
+                               (unsigned long)offset,
+                               bfd_section_name (segdef->asect),
+                               (unsigned long)segdef->asect->size);
+          bfd_set_error (bfd_error_wrong_format);
+          free (expanded.data);
+          return false;
+        }
+    }
+
+  if (!i386omf_add_expanded_lidata (abfd, segdef->asect, offset,
+                                     expanded.data, expanded.len))
+    {
+      free (expanded.data);
+      return false;
+    }
+
+  free (expanded.data);
+
+  segdef->asect->flags |= (SEC_HAS_CONTENTS | SEC_LOAD | SEC_ALLOC);
+
+  return true;
 }
 
 /*
@@ -2366,15 +2672,19 @@ SYNOPSIS
     static bool i386omf_add_section_data(bfd *abfd, struct bfd_section *asect, bfd_vma offset, bfd_byte const *p, bfd_size_type reclen, int rectype);
 
 DESCRIPTION
-    Adds data to a section, handling both LEDATA and LIDATA records.
-    Allocates memory for the section contents if needed. Reports errors for overflows or allocation failures.
+    Adds LEDATA record data to a section.  Allocates memory for the section
+    contents if needed.  Reports errors for overflows or allocation failures.
+
+    Note: LIDATA records no longer reach this function — they have their
+    own dedicated handler (i386omf_read_lidata) that performs scratch-buffer
+    expansion before a single bounds-checked copy.
 
     @param abfd    The BFD file handle.
     @param asect   The section to add data to.
     @param offset  Offset in the section to start writing.
     @param p       Pointer to the record data.
     @param reclen  Length of the record data.
-    @param rectype Record type (LE/LIDATA).
+    @param rectype Record type (LEDATA or LEDATA386).
     @return        true on success, false on error.
 */
 static bool
@@ -2382,7 +2692,7 @@ i386omf_add_section_data(bfd *abfd,
                          struct bfd_section *asect,
                          bfd_vma offset,
                          bfd_byte const *p,
-                         bfd_size_type reclen, int rectype) {
+                         bfd_size_type reclen, int rectype ATTRIBUTE_UNUSED) {
     struct i386omf_obj_data *tdata = abfd->tdata.any;
 
     /* Lazily allocate memory for section data. */
@@ -2396,23 +2706,15 @@ i386omf_add_section_data(bfd *abfd,
         asect->flags |= SEC_IN_MEMORY;
     }
 
-    if (rectype & (OMF_RECORD_LEDATA ^ OMF_RECORD_LIDATA)) {
-        /* LIDATA, 0xa2 or 0xa3. */
-        if (!i386omf_add_section_lidata(abfd, asect, &offset,
-                                        p, reclen))
-            return false;
-    } else {
-        /* LEDATA, 0xa2 or 0xa3. */
-        if ((asect->size < offset) || (asect->size - offset < reclen)) {
-            _bfd_error_handler("LEDATA at 0x%lx overflows section %s",
-                      (unsigned long)(p - tdata->image),
-                      bfd_section_name(asect));
-            bfd_set_error(bfd_error_wrong_format);
-            return false;
-        }
-
-        memcpy(asect->contents + offset, p, reclen);
+    if ((asect->size < offset) || (asect->size - offset < reclen)) {
+        _bfd_error_handler("LEDATA at 0x%lx overflows section %s",
+                  (unsigned long)(p - tdata->image),
+                  bfd_section_name(asect));
+        bfd_set_error(bfd_error_wrong_format);
+        return false;
     }
+
+    memcpy(asect->contents + offset, p, reclen);
 
     return true;
 }
@@ -2668,10 +2970,12 @@ process_record(bfd *abfd,
             record_ok = i386omf_read_fixupp(abfd, p, reclen, rectype & 1);
             break;
         case OMF_RECORD_LEDATA:
-        case OMF_RECORD_LIDATA:
         case OMF_RECORD_LEDATA386:
-        case OMF_RECORD_LIDATA386:
             record_ok = i386omf_read_leidata(abfd, p, reclen, rectype);
+            break;
+        case OMF_RECORD_LIDATA:
+        case OMF_RECORD_LIDATA386:
+            record_ok = i386omf_read_lidata(abfd, p, reclen, rectype);
             break;
         case OMF_RECORD_COMDAT:
         case OMF_RECORD_COMDAT386:

@@ -320,3 +320,87 @@ if { [regexp "_TEXT.*00000010" $got] } {
     fail $test
 }
 
+# -----------------------------------------------------------------------
+#  lidata_simple.o — TIS Example 2: 10 dup('ALPHA','BETA') = 90 bytes
+# -----------------------------------------------------------------------
+set test "OMF lidata: format detection"
+set got [binutils_run $OBJDUMP "-x tmpdir/lidata_simple.o"]
+if { [regexp "file format i386omf" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF lidata: section size 90 bytes"
+if { [regexp "_TEXT.*0000005a" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF lidata: HAS_CONTENTS flag"
+if { [regexp "HAS_CONTENTS" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+# Verify by dumping contents; expect "ALPHABETA" repeated in the hex dump.
+set test "OMF lidata: content ALPHABETA"
+set got [binutils_run $OBJDUMP "-s tmpdir/lidata_simple.o"]
+if { [regexp "ALPHABETA" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+# -----------------------------------------------------------------------
+#  lidata_nested.o — TIS Example 1 style nested blocks
+# -----------------------------------------------------------------------
+set test "OMF lidata nested: format detection"
+set got [binutils_run $OBJDUMP "-x tmpdir/lidata_nested.o"]
+if { [regexp "file format i386omf" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF lidata nested: section size 20 bytes"
+if { [regexp "_TEXT.*00000014" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+# -----------------------------------------------------------------------
+#  lidata_32bit.o — LIDATA386 record
+# -----------------------------------------------------------------------
+set test "OMF lidata 32-bit: format detection"
+set got [binutils_run $OBJDUMP "-x tmpdir/lidata_32bit.o"]
+if { [regexp "file format i386omf" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF lidata 32-bit: content at offset 0x10"
+set got [binutils_run $OBJDUMP "-s tmpdir/lidata_32bit.o"]
+if { [regexp "deadbeef" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+# -----------------------------------------------------------------------
+#  Negative tests — all must be rejected
+# -----------------------------------------------------------------------
+foreach errfile {lidata_truncated lidata_zero_segidx lidata_overflow} {
+    set test "OMF lidata error: $errfile"
+    set got [binutils_run $OBJDUMP "-x tmpdir/$errfile.o"]
+    if { [regexp "file format not recognized" $got] } {
+	pass $test
+    } else {
+	fail $test
+    }
+}
+

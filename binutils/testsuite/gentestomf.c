@@ -286,6 +286,36 @@ ob_ledata (struct omf_buf *ob, int is_32bit,
   ob_write (ob, rec, n);
 }
 
+/* Write a LIDATA (0xA2) or LIDATA386 (0xA3) record.
+   seg_idx: segment index (variable-length).
+   offset: iterated data offset (16 or 32 bit).
+   datablock: raw Data Block field bytes (Repeat Count + Block Count + content).
+   dblen: length of datablock.  */
+static void
+ob_lidata (struct omf_buf *ob, int is_32bit,
+	   int seg_idx, uint32_t offset,
+	   const uint8_t *datablock, int dblen)
+{
+  uint8_t payload[4096];
+  int plen = 0;
+  plen += omf_index (payload + plen, seg_idx);
+  if (is_32bit)
+    {
+      put32le (payload + plen, offset);
+      plen += 4;
+    }
+  else
+    {
+      put16le (payload + plen, offset);
+      plen += 2;
+    }
+  memcpy (payload + plen, datablock, dblen);
+  plen += dblen;
+  uint8_t rec[4096 + 16];
+  int n = omf_record (rec, is_32bit ? 0xa3 : 0xa2, payload, plen);
+  ob_write (ob, rec, n);
+}
+
 /* Write a MODEND (0x8A) or MODEND386 (0x8B).
    flags: 0x80 = main module, 0x40 = has start address.  */
 static void
@@ -1133,6 +1163,203 @@ gen_skipped_record (const char *outdir)
 }
 
 /* ------------------------------------------------------------------ */
+/*  LIDATA test objects                                                 */
+/* ------------------------------------------------------------------ */
+
+/* lidata_simple.o — TIS Example 2: 10 dup('ALPHA','BETA') in 16-bit LIDATA.
+   Expected section content: 90 bytes of "ALPHABETA" repeated 10 times.  */
+static void
+gen_lidata_simple (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "lidata_simple");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 0, 90, 5, 2, 1, 0, 0);
+
+  /* Data block: RepeatCount=10, BlockCount=2
+       ChildA: RepeatCount=1, BlockCount=0, count=5, "ALPHA"
+       ChildB: RepeatCount=1, BlockCount=0, count=4, "BETA"  */
+  uint8_t datablock[] = {
+    0x0A, 0x00,                              /* RepeatCount = 10 */
+    0x02, 0x00,                              /* BlockCount = 2 */
+      0x01, 0x00,  0x00, 0x00,  0x05,       /* ChildA leaf */
+      'A', 'L', 'P', 'H', 'A',
+      0x01, 0x00,  0x00, 0x00,  0x04,       /* ChildB leaf */
+      'B', 'E', 'T', 'A'
+  };
+  ob_lidata (&ob, 0, 1, 0, datablock, sizeof (datablock));
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/lidata_simple.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* lidata_nested.o — TIS Example 1 style: nested data blocks.
+   Outer: RepeatCount=2, BlockCount=2
+     Child1: RepeatCount=3, BlockCount=0, count=2, bytes=40 41
+     Child2: RepeatCount=2, BlockCount=0, count=2, bytes=50 51
+   Expected expansion: 20 bytes.  */
+static void
+gen_lidata_nested (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "lidata_nested");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 0, 20, 5, 2, 1, 0, 0);
+
+  uint8_t datablock[] = {
+    0x02, 0x00,                              /* RepeatCount = 2 */
+    0x02, 0x00,                              /* BlockCount = 2 */
+      0x03, 0x00,  0x00, 0x00,  0x02,       /* Child1: repeat=3, leaf, count=2 */
+      0x40, 0x41,
+      0x02, 0x00,  0x00, 0x00,  0x02,       /* Child2: repeat=2, leaf, count=2 */
+      0x50, 0x51
+  };
+  ob_lidata (&ob, 0, 1, 0, datablock, sizeof (datablock));
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/lidata_nested.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* lidata_32bit.o — LIDATA386 record with 32-bit iterated data offset.  */
+static void
+gen_lidata_32bit (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "lidata_32bit");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 1, 64, 5, 2, 1, 0, 0);
+
+  /* Simplest possible: RepeatCount=1, BlockCount=0, count=4, data=DE AD BE EF */
+  uint8_t datablock[] = {
+    0x01, 0x00, 0x00, 0x00,                  /* RepeatCount = 1 (32-bit) */
+    0x00, 0x00,                              /* BlockCount = 0 */
+    0x04,                                    /* count = 4 */
+    0xDE, 0xAD, 0xBE, 0xEF
+  };
+  ob_lidata (&ob, 1, 1, 0x10, datablock, sizeof (datablock));
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/lidata_32bit.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* lidata_truncated.o — leaf content truncated (negative test).
+   RepeatCount=1, BlockCount=0, count=2, but only 1 data byte follows.  */
+static void
+gen_lidata_truncated (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "lidata_truncated");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 0, 16, 5, 2, 1, 0, 0);
+
+  uint8_t datablock[] = {
+    0x01, 0x00,                              /* RepeatCount = 1 */
+    0x00, 0x00,                              /* BlockCount = 0 */
+    0x02,                                    /* count = 2, but only 1 byte */
+    0x40
+  };
+  ob_lidata (&ob, 0, 1, 0, datablock, sizeof (datablock));
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/lidata_truncated.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* lidata_zero_segidx.o — zero segment index (negative test).  */
+static void
+gen_lidata_zero_segidx (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "lidata_zero_segidx");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 0, 16, 5, 2, 1, 0, 0);
+
+  /* Valid data block but with seg_idx=0 (which must be rejected). */
+  uint8_t datablock[] = {
+    0x01, 0x00,  0x00, 0x00,  0x02,  0x41, 0x42
+  };
+  ob_lidata (&ob, 0, 0, 0, datablock, sizeof (datablock));
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/lidata_zero_segidx.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* lidata_overflow.o — expansion exceeds non-COMDAT segment bounds (negative test).  */
+static void
+gen_lidata_overflow (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "lidata_overflow");
+  ob_lnames (&ob, "_TEXT");
+  /* Declare segment as only 4 bytes, but data block claims 6.  */
+  ob_segdef (&ob, 0, 4, 5, 2, 1, 0, 0);
+
+  uint8_t datablock[] = {
+    0x01, 0x00,                              /* RepeatCount = 1 */
+    0x00, 0x00,                              /* BlockCount = 0 */
+    0x06,                                    /* count = 6 */
+    0x01, 0x02, 0x03, 0x04, 0x05, 0x06
+  };
+  ob_lidata (&ob, 0, 1, 0, datablock, sizeof (datablock));
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/lidata_overflow.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* ------------------------------------------------------------------ */
 /*  main                                                                */
 /* ------------------------------------------------------------------ */
 
@@ -1176,6 +1403,13 @@ main (int argc, char **argv)
   gen_comdef (outdir);
   gen_comdat (outdir);
   gen_skipped_record (outdir);
+
+  gen_lidata_simple (outdir);
+  gen_lidata_nested (outdir);
+  gen_lidata_32bit (outdir);
+  gen_lidata_truncated (outdir);
+  gen_lidata_zero_segidx (outdir);
+  gen_lidata_overflow (outdir);
 
   printf ("gentestomf: done\n");
   return 0;
