@@ -597,7 +597,7 @@ DESCRIPTION
     @param len Number of bytes to print.
 */
 static void
-hexdump(bfd_byte const* p, bfd_size_type len)
+hexdump(bfd *abfd, bfd_byte const* p, bfd_size_type len)
 {
   bfd_size_type i;
   char* s;
@@ -1026,6 +1026,16 @@ i386omf_read_modend(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
     if (omf_debug) fprintf(stderr, "MODEND Module Type 0x%02x has non-standard bits set.\n",
                             module_type);
   }
+
+  /* §MODEND-specific rule: if START (bit 6) is set, the relocatable bit
+     (bit 0) must also be set.  LINK does not support an absolute
+     (non-relocatable) start address.  */
+  if (has_start && (module_type & 0x01) == 0)
+    {
+      (*_bfd_error_handler)("MODEND start address is not relocatable (bit 0 must be set).");
+      bfd_set_error(bfd_error_wrong_format);
+      return false;
+    }
 
   if (!has_start)
     return true;
@@ -3170,7 +3180,7 @@ i386omf_readobject (bfd *abfd, bfd_size_type osize, unsigned long *machine)
                 default:
                     (*_bfd_error_handler)("process_record() failed at 0x%lx",
                                           p - tdata->image);
-                    hexdump(p, reclen + OMF_RECORD_HEADER);
+                    hexdump(abfd, p, reclen + OMF_RECORD_HEADER);
                     (*_bfd_error_handler)("BFD error = %d", bfd_get_error());
                     return false;
             }
