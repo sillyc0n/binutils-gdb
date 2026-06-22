@@ -278,6 +278,8 @@ struct i386omf_segment
   int class_index;
   int overlay_index;
   bfd_vma last_data_offset;     /* §7: section-relative offset of most recent LE/LIDATA record */
+  bool big;                     /* B bit (ACBP bit 1): segment uses maximum length (64KB or 4GB) */
+  bool use32;                   /* P bit (ACBP bit 0): 1 = Use32, 0 = Use16 */
 };
 
 struct i386omf_group_entry
@@ -602,6 +604,8 @@ hexdump(bfd *abfd, bfd_byte const* p, bfd_size_type len)
   bfd_size_type i;
   char* s;
   size_t amt;
+
+  (void)abfd;
 
   /* XXX - 1000 is the size of _bfd_default_error_handler()'s buffer. */
   if (len > 1000 / 3)
@@ -1688,25 +1692,36 @@ DESCRIPTION
     @param is32   Nonzero if the record uses 32-bit offsets.
     @return       true on success, false on error.
 */
+/* A=4 page-size tables indexed by ACBP alignment field (bits 7-5).
+   _16: Intel 8086 convention = 256-byte page (2^8).
+   _32: IBM convention = 4096-byte page (2^12), used by 32-bit toolchains.
+   A=6 (LTL) is paragraph-aligned (16 bytes, 2^4) per the Intel spec.  */
+static const unsigned int alignment_powers_16[] = {0, 0, 1, 4,  8, 2, 4, (unsigned int)-1};
+static const unsigned int alignment_powers_32[] = {0, 0, 1, 4, 12, 2, 4, (unsigned int)-1};
+
 static bool
 i386omf_read_segdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32) {
     struct i386omf_obj_data *tdata = abfd->tdata.any;
+    const unsigned int *alignment_powers = is32 ? alignment_powers_32 : alignment_powers_16;
     int segdefs_seen = 0;
 
     while (reclen) {
-        const unsigned int alignment_powers[] = {0, 0, 1, 4, 8, 2, 12, -1};
-        int alignment, combination;
+        int alignment, combination, big, use32;
         int name_index, class_index, overlay_index;
         struct i386omf_segment *seg;
         struct i386omf_symbol *seg_sym;
         char const *segment_name;
         bfd_vma seglen;
         bfd_byte attr;
+        bfd_byte const *rec_start;
 
+        rec_start = p;
         attr = *p;
 
         alignment = (attr & OMF_SEGDEF_ALIGNMENT_MASK) >> OMF_SEGDEF_ALIGNMENT_SHIFT;
         combination = (attr & OMF_SEGDEF_COMBINATION_MASK) >> OMF_SEGDEF_COMBINATION_SHIFT;
+        big = (attr >> 1) & 1;
+        use32 = attr & 1;
 
         if (alignment == OMF_SEGDEF_ALIGNMENT_ABSOLUTE) {
             /* Absolute segment; get frame number and offset. */
@@ -1727,6 +1742,28 @@ i386omf_read_segdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32
         if (!i386omf_read_offset(abfd, &seglen, &p, &reclen,
                                  is32 ? I386OMF_OFFSET_SIZE_32 : I386OMF_OFFSET_SIZE_16))
             return false;
+
+        if (big && seglen != 0) {
+            _bfd_error_handler("SEGDEF at 0x%lx has B=1 but segment length is non-zero (%lu)",
+                               (unsigned long)(rec_start - tdata->image), (unsigned long)seglen);
+            bfd_set_error(bfd_error_wrong_format);
+            return false;
+        }
+        if (big) {
+            if (is32) {
+                if (sizeof(bfd_vma) < 8) {
+                    _bfd_error_handler("SEGDEF at 0x%lx: B=1 Use32 segment requires 64-bit bfd_vma, "
+                                       "capping size to 0xffffffff",
+                                       (unsigned long)(rec_start - tdata->image));
+                    seglen = (bfd_vma)-1;
+                } else {
+                    seglen = 0x100000000ULL;
+                }
+            } else {
+                seglen = 0x10000;
+            }
+        }
+
         if (!i386omf_read_index(abfd, &name_index, &p, &reclen))
             return false;
         if (!i386omf_read_index(abfd, &class_index, &p, &reclen))
@@ -1734,12 +1771,27 @@ i386omf_read_segdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32
         if (!i386omf_read_index(abfd, &overlay_index, &p, &reclen))
             return false;
 
+        if (omf_debug) {
+            if (name_index == 0)
+                fprintf(stderr, "SEGDEF at 0x%lx: segment name index is zero (using default)\n",
+                        (unsigned long)(rec_start - tdata->image));
+            if (class_index == 0)
+                fprintf(stderr, "SEGDEF at 0x%lx: class name index is zero (using default)\n",
+                        (unsigned long)(rec_start - tdata->image));
+            if (overlay_index == 0)
+                fprintf(stderr, "SEGDEF at 0x%lx: overlay name index is zero\n",
+                        (unsigned long)(rec_start - tdata->image));
+        }
+
         if (alignment == OMF_SEGDEF_ALIGNMENT_UNDEFINED) {
-            _bfd_error_handler("Segment %d (%s) wants alignment = 7",
-                                name_index,
-                                strtab_lookup(tdata->lnames, name_index) ? ((struct counted_string *)strtab_lookup(tdata->lnames, name_index))->data : "<?>");
-            bfd_set_error(bfd_error_wrong_format);
-            return false;
+            _bfd_error_handler("SEGDEF at 0x%lx: alignment value 7 is undefined, "
+                               "treating as byte-aligned",
+                               (unsigned long)(rec_start - tdata->image));
+            alignment = OMF_SEGDEF_ALIGNMENT_RELOC_BYTE;
+        } else if (alignment == OMF_SEGDEF_ALIGNMENT_LTL_PARA) {
+            if (omf_debug)
+                fprintf(stderr, "SEGDEF at 0x%lx: alignment value 6 (LTL) is not supported per Intel spec, treating as paragraph-aligned\n",
+                        (unsigned long)(rec_start - tdata->image));
         }
 
         seg = bfd_alloc(abfd, sizeof(*seg));
@@ -1749,6 +1801,9 @@ i386omf_read_segdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32
         seg->name_index = name_index;
         seg->class_index = class_index;
         seg->overlay_index = overlay_index;
+        seg->big = big;
+        seg->use32 = use32;   /* stored for future use; downstream handlers
+                                 currently use the record-type is32 flag */
         if (omf_debug) _bfd_error_handler(_("SEGDEF name_index:  %x, class_index: %x, overlay_index: %x"),
                             name_index,
                             class_index,
