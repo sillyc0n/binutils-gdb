@@ -160,13 +160,14 @@ ob_lnames (struct omf_buf *ob, const char *name)
    seglen is the segment size in bytes.
    name_idx: index into LNAMES table.  */
 static void
-ob_segdef (struct omf_buf *ob, int is_32bit, uint32_t seglen,
-	   int alignment, int combination,
-	   int name_idx, int class_idx, int overlay_idx)
+ob_segdef_ex (struct omf_buf *ob, int is_32bit, uint32_t seglen,
+	      int alignment, int combination,
+	      int name_idx, int class_idx, int overlay_idx,
+	      int big, int use32)
 {
   uint8_t payload[32];
   int plen = 0;
-  uint8_t attr = (alignment << 5) | (combination << 2);
+  uint8_t attr = (alignment << 5) | (combination << 2) | (big << 1) | use32;
   payload[plen++] = attr;
   if (is_32bit)
     {
@@ -185,6 +186,9 @@ ob_segdef (struct omf_buf *ob, int is_32bit, uint32_t seglen,
   int n = omf_record (rec, is_32bit ? 0x99 : 0x98, payload, plen);
   ob_write (ob, rec, n);
 }
+
+#define ob_segdef(ob, is32, seglen, align, comb, name, cls, ovl) \
+  ob_segdef_ex (ob, is32, seglen, align, comb, name, cls, ovl, 0, 0)
 
 /* Write a GRPDEF (0x9A).  Simple SEGDEF-component version.  */
 static void
@@ -1360,6 +1364,124 @@ gen_lidata_overflow (const char *outdir)
 }
 
 /* ------------------------------------------------------------------ */
+/*  SEGDEF ACBP bit tests: B (Big), A (alignment), zero name indices    */
+/* ------------------------------------------------------------------ */
+
+/* big_bit.o — 16-bit SEGDEF with B=1, seglen=0.
+   Expected: section size = 0x10000 (65536), not 0.  */
+static void
+gen_big_bit (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "big_bit");
+  ob_lnames (&ob, "_TEXT");
+  /* big=1, use32=0, alignment=5 (dword), combination=2 (public) */
+  ob_segdef_ex (&ob, 0, 0, 5, 2, 1, 0, 0, 1, 0);
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 0, 1, 0, data, 16);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/big_bit.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* alignment_6.o — 32-bit SEGDEF with alignment=6 (LTL, paragraph).
+   Expected: alignment_power = 4 (2**4 = 16-byte paragraph).  */
+static void
+gen_alignment_6 (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "alignment_6");
+  ob_lnames (&ob, "_TEXT");
+  /* alignment=6, combination=2, big=0, use32=0 */
+  ob_segdef_ex (&ob, 1, 16, 6, 2, 1, 0, 0, 0, 0);
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 0, data, 16);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/alignment_6.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* alignment_7.o — 32-bit SEGDEF with alignment=7 (undefined).
+   Expected: does not reject; fallback alignment_power = 0 (byte-aligned).  */
+static void
+gen_alignment_7 (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "alignment_7");
+  ob_lnames (&ob, "_TEXT");
+  /* alignment=7, combination=2, big=0, use32=0 */
+  ob_segdef_ex (&ob, 1, 16, 7, 2, 1, 0, 0, 0, 0);
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 0, data, 16);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/alignment_7.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* zero_indices.o — SEGDEF with name/class/overlay indices all zero.
+   Expected: parser accepts gracefully with default names.  */
+static void
+gen_zero_indices (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "zero_indices");
+  ob_lnames (&ob, "_TEXT");
+  /* name_idx=0, class_idx=0, overlay_idx=0 — all zero.
+     Only LNAMES[1]="_TEXT" exists, but we pass 0 for all.
+     The BFD backend substitutes "UNNAMED"/"" for zero indices.  */
+  ob_segdef (&ob, 1, 16, 5, 2, 0, 0, 0);
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 0, data, 16);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/zero_indices.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* ------------------------------------------------------------------ */
 /*  main                                                                */
 /* ------------------------------------------------------------------ */
 
@@ -1410,6 +1532,11 @@ main (int argc, char **argv)
   gen_lidata_truncated (outdir);
   gen_lidata_zero_segidx (outdir);
   gen_lidata_overflow (outdir);
+
+  gen_big_bit (outdir);
+  gen_alignment_6 (outdir);
+  gen_alignment_7 (outdir);
+  gen_zero_indices (outdir);
 
   printf ("gentestomf: done\n");
   return 0;
