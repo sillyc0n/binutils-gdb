@@ -3105,6 +3105,59 @@ i386omf_teardown_tdata(bfd *abfd) {
   }
 }
 
+/* omf_verify_checksum
+ *
+ * Verifies the OMF record checksum per TIS OMF v1.1 §"The Object Record
+ * Format".  The checksum byte is the last byte of the record and is defined
+ * as the negative sum (mod 256) of all other bytes, so the byte-wise sum of
+ * the entire record must equal 0.
+ *
+ * A stored checksum of 0x00 is ALWAYS accepted without complaint: the spec
+ * explicitly permits compilers to write 0 instead of computing the real value.
+ * Real linkers (including LINK386) ignore the checksum entirely, so this
+ * function only emits a debug warning; it never sets a BFD error or returns
+ * false.
+ *
+ * @param abfd    The BFD file handle.
+ * @param rec     Pointer to the start of the full record (type byte).
+ * @param reclen  The 16-bit record length field value as read from the file.
+ *                This includes the checksum byte but excludes the 3-byte
+ *                header.  reclen == 0 is valid (empty record, no checksum).
+ */
+static void
+omf_verify_checksum (bfd *abfd, bfd_byte const *rec, bfd_size_type reclen)
+{
+  /* reclen == 0 means the record has no body and no checksum byte.  */
+  if (reclen == 0)
+    return;
+
+  bfd_byte stored = bfd_get_8 (abfd, rec + OMF_RECORD_HEADER + reclen - 1);
+
+  /* A stored value of 0x00 is always accepted per the TIS spec.  */
+  if (stored == 0x00)
+    return;
+
+  bfd_size_type total = OMF_RECORD_HEADER + reclen;
+  unsigned int sum = 0;
+  bfd_size_type i;
+
+  for (i = 0; i < total; i++)
+    sum += bfd_get_8 (abfd, rec + i);
+
+  if ((sum & 0xff) != 0)
+    {
+      struct i386omf_obj_data *tdata = abfd->tdata.any;
+      if (omf_debug)
+        fprintf (stderr,
+                 "OMF checksum mismatch at record 0x%lx "
+                 "(type 0x%02x): stored 0x%02x, sum mod 256 = 0x%02x\n",
+                 (unsigned long)(rec - tdata->image),
+                 (unsigned int) bfd_get_8 (abfd, rec),
+                 (unsigned int) stored,
+                 sum & 0xff);
+    }
+}
+
 /*
     i386omf_readobject
 
@@ -3166,9 +3219,12 @@ i386omf_readobject (bfd *abfd, bfd_size_type osize, unsigned long *machine)
             return false;
         }
 
+        /* Optional diagnostic checksum verification (never fatal).  */
+        omf_verify_checksum (abfd, p, reclen);
+
         /* §2 + §7 item 11: The OMF length field includes the 1-byte checksum
            trailer.  Subtract 1 to get the body length; the checksum byte is
-           skipped and not validated.  */
+           otherwise skipped.  */
         if (!process_record(abfd, rectype,
                             reclen ? reclen - 1 : 0, p + OMF_RECORD_HEADER)) {
             switch (bfd_get_error()) {
