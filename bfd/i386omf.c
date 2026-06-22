@@ -1477,11 +1477,9 @@ i386omf_read_extdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
     struct i386omf_symbol* extdef;
     bfd_size_type slen;
 
-    extdef = bfd_alloc(abfd, sizeof(*extdef));
+    extdef = (struct i386omf_symbol*) bfd_make_empty_symbol(abfd);
     if (extdef == NULL)
       return false;
-
-    extdef = (struct i386omf_symbol*) bfd_make_empty_symbol(abfd);
     abfd->flags |= HAS_SYMS;
 
     slen = i386omf_read_string(abfd, &extdef->name, p, reclen);
