@@ -1804,7 +1804,7 @@ i386omf_read_segdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32
         seg->big = big;
         seg->use32 = use32;   /* stored for future use; downstream handlers
                                  currently use the record-type is32 flag */
-        if (omf_debug) _bfd_error_handler(_("SEGDEF name_index:  %x, class_index: %x, overlay_index: %x"),
+        if (omf_debug) fprintf(stderr, _("SEGDEF name_index:  %x, class_index: %x, overlay_index: %x"),
                             name_index,
                             class_index,
                             overlay_index);
@@ -2303,8 +2303,8 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
             if (thmethod <= 2 || (!is_frame_thread && thmethod >= 4 && thmethod <= 6))
                 i386omf_read_index(abfd, &index, &p, &reclen);
 
-            if (omf_debug) _bfd_error_handler(
-                    _(" THREAD subrec: %02x, D(%x): %s, method: %d - %s, thread number: %d, index: %d"),
+            if (omf_debug) fprintf(stderr,
+                    " THREAD subrec: %02x, D(%x): %s, method: %d - %s, thread number: %d, index: %d",
                     threaddata,
                     (threaddata & 0x40) >> 6,
                     is_frame_thread ? "FRAME" : "TARGET",
