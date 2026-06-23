@@ -527,7 +527,7 @@ i386omf_create_comdat_segment (bfd *abfd)
    a tuple of SEG and OFF relocs.  Neither does gas generate FAR relocs.  */
 reloc_howto_type howto_table_i386omf_pcrel[] = {
  /*  type                       rs  size    bsz     pcrel   bp  ovrf                         sf  name        part_inpl  readmask    setmask     pcdone */
- HOWTO(R_I386OMF_LO8,           0,  0,      8,      true,   0,  complain_overflow_signed,    0,  "PC8LO",    false,     0xff,       0xff,       false),     // 0 - Low-order byte
+ HOWTO(R_I386OMF_LO8,           0,  0,      8,      true,   0,  complain_overflow_bitfield,  0,  "PC8LO",    false,     0xff,       0xff,       false),     // 0 - Low-order byte
  HOWTO(R_I386OMF_OFF16,         0,  1,      16,     true,   0,  complain_overflow_bitfield,  0,  "OFFPC16",  false,     0xffff,     0xffff,     false),     // 1 - Offset
  EMPTY_HOWTO(R_I386OMF_SEG), /* PC-relative SEG relocs don't make sense. */                                                                                 // 2 - Segment
  EMPTY_HOWTO(R_I386OMF_FAR16),                                                                                                                              // 3 - Pointer (sgment:offset)
@@ -538,14 +538,14 @@ reloc_howto_type howto_table_i386omf_pcrel[] = {
  EMPTY_HOWTO(R_I386OMF_RESERVED_8),
  HOWTO(R_I386OMF_OFF32,         0,  2,      32,     true,   0,  complain_overflow_bitfield,  0,  "OFFPC32",  false,     0xffffffff, 0xffffffff, false),     // 9 -
  EMPTY_HOWTO(R_I386OMF_RESERVED_10),
- EMPTY_HOWTO(R_I386OMF_FAR32),
+ EMPTY_HOWTO(R_I386OMF_FAR32), /* FAR32 — PC-relative far pointer has no meaning; far relocs expanded to SEG+OFF pair upstream */
  EMPTY_HOWTO(R_I386OMF_RESERVED_12),
  HOWTO(R_I386OMF_OFF32_LOADER,  0,  2,      32,     true,   0,  complain_overflow_bitfield,  0,  "OFFPC32L", false,     0xffffffff, 0xffffffff, false),     // 13
 };
 
 reloc_howto_type howto_table_i386omf_segrel[] = {
  /*    type                      rs size    bitsz   pcrel   bp  ovrf                        sfunc  name      part_inpl  smask       dmask       pcreloffset */
- HOWTO(R_I386OMF_LO8,            0, 0,      8,      false,  0,  complain_overflow_signed,    0,  "8LO",      false,     0xff,       0xff,       false), /* XXX Which overflow type? */
+ HOWTO(R_I386OMF_LO8,            0, 0,      8,      false,  0,  complain_overflow_bitfield,  0,  "8LO",      false,     0xff,       0xff,       false), /* bitfield: correct for both signed offsets and unsigned byte values */
  HOWTO(R_I386OMF_OFF16,          0, 1,      16,     false,  0,  complain_overflow_bitfield,  0,  "OFF16",    false,     0xffff,     0xffff,     false),
  HOWTO(R_I386OMF_SEG,            0, 1,      16,     false,  0,  complain_overflow_unsigned,  0,  "SEG",      false,     0xffff,     0xffff,     false),
  EMPTY_HOWTO(R_I386OMF_FAR16),
@@ -556,7 +556,7 @@ reloc_howto_type howto_table_i386omf_segrel[] = {
  EMPTY_HOWTO(R_I386OMF_RESERVED_8),
  HOWTO(R_I386OMF_OFF32,          0, 2,      32,     false, 0,  complain_overflow_bitfield,   0,  "OFF32",    false,     0xffffffff, 0xffffffff, false),
  EMPTY_HOWTO(R_I386OMF_RESERVED_10),
- EMPTY_HOWTO(R_I386OMF_FAR32),
+ EMPTY_HOWTO(R_I386OMF_FAR32), /* FAR32 — unsupported; far relocs expanded to SEG+OFF pair upstream */
  EMPTY_HOWTO(R_I386OMF_RESERVED_12),
  HOWTO(R_I386OMF_OFF32_LOADER,   0, 2,      32,     false, 0,  complain_overflow_bitfield,   0,  "OFF32L",   false,     0xffffffff, 0xffffffff, false),
 };
@@ -587,7 +587,7 @@ reloc_howto_type howto_table_i386omf_segrel[] = {
  * EXE loader though.)
  */
 reloc_howto_type howto_wrt_segdef
-    = HOWTO(R_I386OMF_WRT_FRAME, 0, 3, 16, false, 0, complain_overflow_bitfield,
+    = HOWTO(R_I386OMF_WRT_FRAME, 0, 1, 16, false, 0, complain_overflow_bitfield,
             &i386omf_fix_wrt_frame, "WRTSEG", false, 0xffff, 0xffff, false);
 
 /*
@@ -2334,13 +2334,22 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
                 }
             }
 
-            /* §4.2.1: Validate Location value (0-13, values 7,8,10,12 reserved).  */
-            if (location >= 14) {
+            /* §4.2.1: Validate Location value (0-13, values 6,7,8,10,12 reserved).  */
+            if (location >= 14
+                || location == 6 || location == 7 || location == 8
+                || location == 10 || location == 12) {
                 _bfd_error_handler("FIXUP at 0x%lx unsupported location type %d",
                                    (unsigned long)(q - tdata->image), location);
                 bfd_set_error(bfd_error_wrong_format);
                 return false;
             }
+
+            /* NOTE: The self-relative addend bias below uses
+               -bfd_get_reloc_size(howto).  This file's howto entries use a
+               log2 size convention (0→1, 1→2, 2→4 bytes).  The bias equals
+               -(1 << howto->size) only when howto->size encodes log2 of
+               bytes, which holds for every non-EMPTY entry in the pcrel
+               table.  If a non-power-of-two howto is added, this breaks.  */
 
             /* §7 (BFD relocation generation): Build arelent from decoded fixup.
                howto selected by (location, mode=M bit).  */
