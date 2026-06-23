@@ -1425,19 +1425,20 @@ i386omf_read_comdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
             && data_type <= OMF_COMDEF_DATA_TYPE_MAX_BORLAND)
         {
           /* Borland segment index (§9): data_type IS the segment
-             index.  A 1-byte size field follows — consume it.
-             Pre-create the COMDAT segment so FIXUPP can reference it
-             before any LEDATA arrives.  */
-          extdef->base.value = data_type;
+             index — consumed by the switch dispatch and COMDAT
+             segment creation below, NOT stored in base.value.
+             The 1-byte field that follows is the communal symbol
+             size in bytes.  Pre-create the COMDAT segment so FIXUPP
+             can reference it before any LEDATA arrives.  */
           if (reclen < 1)
             {
               (*_bfd_error_handler)(
-                  "COMDEF Borland length truncated at 0x%lx",
+                  "COMDEF Borland size truncated at 0x%lx",
                   p - tdata->image);
               bfd_set_error(bfd_error_wrong_format);
               return false;
             }
-          extdef->base.value |= bfd_get_8(abfd, p) << 8;
+          extdef->base.value = bfd_get_8(abfd, p); /* size only */
           p++;
           reclen--;
 
@@ -1448,7 +1449,10 @@ i386omf_read_comdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
             if (cs == NULL)
               return false;
           }
-          tdata->next_comdat_segidx++;
+          /* No next_comdat_segidx increment — none of the other
+             call sites do it, and this function uses
+             num_comdat_segments, not next_comdat_segidx, for
+             segment naming.  */
         }
         else
         {
