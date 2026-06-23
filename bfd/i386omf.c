@@ -1963,7 +1963,10 @@ i386omf_read_segdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32
         bfd_set_error(bfd_error_wrong_format);
         return false;
     }
-    if (reclen || segdefs_seen > 1)
+    /* segdefs_seen > 1 is normal for old-format OMF producers
+       that pack multiple segment definitions into one record.
+       This is not an error — the loop above handles it.  */
+    if (segdefs_seen > 1)
         if (omf_debug) fprintf(stderr,
             "SEGDEF record contains %d segment definitions (old-format multi-segment style)\n",
             segdefs_seen);
