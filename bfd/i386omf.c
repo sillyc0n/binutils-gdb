@@ -1542,13 +1542,17 @@ i386omf_read_pubdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
   int base_group, base_segment;
   bfd_vma base_frame = 0;
 
+  /* Base Group and Base Segment: OMF indices shared by all entries.  */
   if (!i386omf_read_index(abfd, &base_group, &p, &reclen))
     return false;
   if (!i386omf_read_index(abfd, &base_segment, &p, &reclen))
     return false;
+
+  /* When Base Segment is 0, a 2-byte Base Frame follows (§3.3).
+     Contents are ignored per spec; consumed only for wire-position
+     correctness and debug diagnostics.  */
   if (base_segment == OMF_PUBDEF_SEGMENT_ABSOLUTE)
   {
-    /* Rarely used absolute-address symbol. */
     if (reclen < 2)
     {
       _bfd_error_handler("Truncated base frame in PUBDEF at 0x%lX",
@@ -1563,6 +1567,7 @@ i386omf_read_pubdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
                             (unsigned int) base_frame);
   }
 
+  /* Per-entry loop: [Name][Offset][TypeIndex] repeats until body exhausted.  */
   while (reclen)
   {
     struct i386omf_symbol* pubdef;
@@ -1572,20 +1577,28 @@ i386omf_read_pubdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
     pubdef = (struct i386omf_symbol*) bfd_make_empty_symbol(abfd);
     abfd->flags |= HAS_SYMS;
 
+    /* Length-prefixed public name string (1–255 bytes, non-empty).  */
     slen = i386omf_read_string(abfd, &pubdef->name, p, reclen);
     if (slen < 1)
       return false;
     p += slen;
     reclen -= slen;
+
+    /* Public Offset: 2B for 0x90, 4B for 0x91.  */
     if (!i386omf_read_offset(abfd, &offset, &p, &reclen,
                              is32 ? I386OMF_OFFSET_SIZE_32
                                   : I386OMF_OFFSET_SIZE_16))
       return false;
+
+    /* Type Index (0 = no type data; informational only).  */
     if (!i386omf_read_index(abfd, &pubdef->type_index, &p, &reclen))
       return false;
 
     pubdef->base.name = pubdef->name.data;
     pubdef->base.flags |= BSF_GLOBAL;
+    /* Per TIS v1.1 §5: the public offset alone is the symbol value.
+       When Base Segment = 0, the Base Frame field is present but
+       explicitly ignored by linkers — do not incorporate it here.  */
     pubdef->base.value = offset;
     pubdef->seg = strtab_lookup(tdata->segdef, base_segment);
     if (pubdef->seg)
@@ -1599,9 +1612,11 @@ i386omf_read_pubdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
 
     pubdef->group = strtab_lookup(tdata->grpdef, base_group);
 
+    /* Dispatch on addressing mode (see §3.4 addressing summary).  */
     if (base_segment != OMF_PUBDEF_SEGMENT_ABSOLUTE)
     {
-      /* Normal segment-relative exported symbol. */
+      /* Case 1: segment-relative (Base Segment ≠ 0).
+         Group may be 0 (no group) or nonzero.  */
       struct i386omf_segment* seg;
 
       seg = strtab_lookup(tdata->segdef, base_segment);
@@ -1616,7 +1631,8 @@ i386omf_read_pubdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
     }
     else if (base_group != OMF_GRPDEF_NONE)
     {
-      /* Rather more weird: relative to a group, but no segment? */
+      /* Case 2: group-relative (Seg = 0, Group ≠ 0).
+         Base Frame is present on wire but ignored per spec.  */
       struct i386omf_group* group;
 
       group = strtab_lookup(tdata->grpdef, base_group);
@@ -1637,7 +1653,8 @@ i386omf_read_pubdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
     }
     else
     {
-      /* Absolute exported symbol. */
+      /* Case 3: absolute symbol (Seg = Group = 0).
+         Offset alone is the symbol value; frame is ignored.  */
       strtab_add(tdata->abs_pubdef, pubdef);
     }
   }
