@@ -2865,11 +2865,17 @@ SYNOPSIS
                                     bfd_size_type reclen, int rectype);
 
 DESCRIPTION
-    Reads and processes an OMF COMDAT (0xC2) or COMDAT386 (0xC3) record,
-    which contains communal data that may be duplicated across object files.
-    Parses the segment index, data record offset, selection criteria byte,
-    and data bytes.  Sets last_leidata so subsequent FIXUPP records can
-    attach relocations.
+    Reads and processes an OMF COMDAT (0xC2) or COMDAT386 (0xC3) record
+    per TIS v1.1 §6.4.
+
+    The COMDAT layout is:
+
+      [Flags 1B][Attributes 1B][Align 1B][Enumerated Data Offset 2/4B]
+      [Type Index 1-2B][Public Base *conditional*][Public Name 1-2B][Data]
+
+    Attributes low nibble = Allocation Type.  If Explicit (0x00), the
+    Public Base fields (Base Group, Base Segment, optional Base Frame)
+    are present.  The data is copied into a synthetic COMDAT segment.
 
     @param abfd    The BFD file handle.
     @param p       Pointer to the record data.
@@ -2883,83 +2889,90 @@ i386omf_read_comdat(bfd *abfd, bfd_byte const *p,
     struct i386omf_obj_data *tdata = abfd->tdata.any;
     struct i386omf_segment *segdef;
     bfd_vma offset;
-    int seg_index;
+    unsigned int flags, attributes, alloc_type, align_byte;
+    int type_idx, base_group, base_segment, base_frame, name_idx;
 
-    if (!i386omf_read_index(abfd, &seg_index, &p, &reclen))
+    /* Record start for diagnostic offsets.  */
+    bfd_byte const *rec_start = p;
+
+    /* 1. Flags byte.  */
+    if (reclen < 1) goto trunc;
+    flags = *p++; reclen--;
+
+    /* 2. Attributes byte — low nibble = Allocation Type.  */
+    if (reclen < 1) goto trunc;
+    attributes = *p++; reclen--;
+    alloc_type = attributes & 0x0F;
+
+    /* 3. Alignment byte.  */
+    if (reclen < 1) goto trunc;
+    align_byte = *p++; reclen--;
+
+    /* 4. Enumerated Data Offset.  */
+    if (!i386omf_read_offset(abfd, &offset, &p, &reclen,
+                             rectype & 1 ? I386OMF_OFFSET_SIZE_32
+                                         : I386OMF_OFFSET_SIZE_16))
         return false;
 
-    if (seg_index <= OMF_SEGDEF_NONE) {
-        /* §6.4: COMDAT with no explicit segment.  Create a synthetic
-           segment so subsequent FIXUPP can attach relocations.  */
-        segdef = i386omf_create_comdat_segment(abfd);
-        if (segdef == NULL)
+    /* 5. Type Index — references a COMDEF definition.  */
+    if (!i386omf_read_index(abfd, &type_idx, &p, &reclen))
+        return false;
+
+    /* 6. Public Base — present only for Explicit allocation.  */
+    base_group = 0;
+    base_segment = 0;
+    base_frame = 0;
+    if (alloc_type == 0x00) {
+        if (!i386omf_read_index(abfd, &base_group, &p, &reclen))
             return false;
-    } else {
-        segdef = i386omf_find_segment(tdata, seg_index);
-        if (segdef == NULL) {
-            if (seg_index >= OMF_COMDAT_SEGIDX_BASE) {
-                segdef = i386omf_create_comdat_segment(abfd);
-                if (segdef == NULL)
-                    return false;
-            } else {
-                _bfd_error_handler("COMDAT at 0x%lx wants phantom segment [%d]",
-                                   (unsigned long)(p - tdata->image),
-                                   seg_index);
-                bfd_set_error(bfd_error_wrong_format);
-                return false;
-            }
+        if (!i386omf_read_index(abfd, &base_segment, &p, &reclen))
+            return false;
+        if (base_segment == 0) {
+            if (reclen < 2) goto trunc;
+            base_frame = p[0] | (p[1] << 8);
+            p += 2; reclen -= 2;
         }
     }
+
+    /* 7. Public Name Index — logical name in the LNAMES table.  */
+    if (!i386omf_read_index(abfd, &name_idx, &p, &reclen))
+        return false;
+
+    /* Create a synthetic segment for this COMDAT's data.  */
+    segdef = i386omf_create_comdat_segment(abfd);
+    if (segdef == NULL)
+        return false;
 
     /* §7 item 1: COMDAT is a valid predecessor for FIXUPP.  */
     tdata->last_leidata = segdef;
-
-    if (!i386omf_read_offset(abfd, &offset, &p, &reclen,
-                             rectype & 1 ? I386OMF_OFFSET_SIZE_32 : I386OMF_OFFSET_SIZE_16))
-        return false;
-
     segdef->last_data_offset = offset;
 
-    /* Selection criteria byte — consume and discard.
-       Valid values: 0=Match, 1=Any, 2=Largest, 3=Same, 4=Complement.  */
-    if (reclen < 1) {
-        _bfd_error_handler("Truncated COMDAT record at 0x%lx",
-                           (unsigned long)(p - tdata->image));
-        bfd_set_error(bfd_error_wrong_format);
-        return false;
-    }
-    p++;
-    reclen--;
-
+    /* 8. Copy remaining bytes as data payload.  */
     if (offset + reclen > segdef->asect->size)
         segdef->asect->size = offset + reclen;
 
-    if ((segdef->asect->flags & SEC_IN_MEMORY) == 0) {
-        segdef->asect->contents = bfd_zalloc(abfd, segdef->asect->size);
-        if (segdef->asect->contents == NULL) {
-            _bfd_error_handler("Out of memory for %s section contents",
-                               bfd_section_name(segdef->asect));
-            return false;
-        }
-        segdef->asect->flags |= SEC_IN_MEMORY;
-    }
-
-    if (offset + reclen > segdef->asect->size
-        || segdef->asect->contents == NULL) {
-        _bfd_error_handler("COMDAT at 0x%lx overflows section %s",
-                           (unsigned long)(p - tdata->image),
-                           bfd_section_name(segdef->asect));
-        bfd_set_error(bfd_error_wrong_format);
+    if (!i386omf_add_section_data(abfd, segdef->asect, offset,
+                                  p, reclen, rectype))
         return false;
-    }
 
-    memcpy(segdef->asect->contents + offset, p, reclen);
+    segdef->asect->flags |= SEC_HAS_CONTENTS | SEC_LOAD | SEC_ALLOC;
 
-    segdef->asect->flags |= (SEC_HAS_CONTENTS |
-                             SEC_LOAD |
-                             SEC_ALLOC);
+    if (omf_debug) fprintf(stderr, "COMDAT: flags=0x%02x attr=0x%02x "
+                           "alloc_type=%d align_byte=%d offset=0x%lx "
+                           "type_idx=%d base_grp=%d base_seg=%d "
+                           "base_frm=0x%04x name_idx=%d data=%lu B\n",
+                           flags, attributes, alloc_type,
+                           (unsigned)align_byte, (unsigned long)offset,
+                           type_idx, base_group, base_segment, base_frame,
+                           name_idx, (unsigned long)reclen);
 
     return true;
+
+trunc:
+    _bfd_error_handler("Truncated COMDAT record at 0x%lx",
+                       (unsigned long)(rec_start - tdata->image));
+    bfd_set_error(bfd_error_wrong_format);
+    return false;
 }
 
 /*

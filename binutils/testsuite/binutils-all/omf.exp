@@ -302,7 +302,7 @@ if { [regexp "file format i386omf" $got] } {
 }
 
 set test "OMF comdat: section contents"
-if { [regexp "_TEXT.*00000030" $got] } {
+if { [regexp "COMDAT_1.*00000010" $got] } {
     pass $test
 } else {
     fail $test

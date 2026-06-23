@@ -1086,7 +1086,9 @@ gen_comdef (const char *outdir)
   }
 }
 
-/* comdat.o — COMDAT386 (0xC3) record with data payload.  */
+/* comdat.o — COMDAT386 (0xC3) record with data payload per TIS v1.1 §6.4.
+   Layout: [Flags 1B][Attributes 1B][Align 1B][DataOffset 4B]
+           [TypeIdx][PublicBase *conditional*][PubNameIdx][Data]  */
 static void
 gen_comdat (const char *outdir)
 {
@@ -1095,13 +1097,21 @@ gen_comdat (const char *outdir)
 
   ob_theadr (&ob, "comdat");
   ob_lnames (&ob, "_TEXT");
+  ob_lnames (&ob, "COMDAT_DATA");
   ob_segdef (&ob, 1, 32, 5, 2, 1, 0, 0);
 
   uint8_t payload[256];
   int plen = 0;
-  plen += omf_index (payload + plen, 1);
-  put32le (payload + plen, 0); plen += 4;
-  payload[plen++] = 0;
+  payload[plen++] = 0;                    /* Flags = 0x00 */
+  payload[plen++] = 0x00;                 /* Attributes: sel=Match(0), alloc=Explicit(0) */
+  payload[plen++] = 0;                    /* Align = 0 (use SEGDEF) */
+  put32le (payload + plen, 0); plen += 4; /* Enumerated Data Offset = 0 */
+  plen += omf_index (payload + plen, 0);  /* Type Index = 0 (no type) */
+  /* Public Base (Explicit allocation): */
+  plen += omf_index (payload + plen, 0);  /* Base Group = 0 */
+  plen += omf_index (payload + plen, 0);  /* Base Segment = 0 */
+  put16le (payload + plen, 0); plen += 2; /* Base Frame = 0 (since Base Seg == 0) */
+  plen += omf_index (payload + plen, 2);  /* Public Name Index = "COMDAT_DATA" */
   uint8_t cdata[16] = { [0 ... 15] = 0x90 };
   memcpy (payload + plen, cdata, 16);
   plen += 16;
