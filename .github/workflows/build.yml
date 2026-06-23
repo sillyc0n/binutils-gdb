@@ -31,7 +31,7 @@ jobs:
         mkdir -p $INSTALL_DIR
         mkdir -p build
         cd build
-        ../configure --prefix=$INSTALL_DIR || exit 1
+        ../configure --enable-targets=all --prefix=$INSTALL_DIR || exit 1
 
     - name: Build
       run: |
