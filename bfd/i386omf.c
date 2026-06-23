@@ -2064,7 +2064,11 @@ i386omf_fix_wrt_frame(bfd *abfd ATTRIBUTE_UNUSED,
                       asection *input_section ATTRIBUTE_UNUSED,
                       bfd *output_bfd ATTRIBUTE_UNUSED,
                       char **error_message ATTRIBUTE_UNUSED) {
-    return bfd_reloc_continue;
+    /* Marker relocation: WRTSEG never touches section data.
+       Returning bfd_reloc_ok prevents fallthrough to the generic
+       apply path which would clobber the preceding OFF16 reloc at
+       the same address.  */
+    return bfd_reloc_ok;
 }
 
 /*
@@ -2211,6 +2215,12 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
                         && !i386omf_read_index(abfd, &frame, &p, &reclen))
                         return false;
                     frame_sym = strtab_lookup(tdata->externs, frame);
+                    if (frame_sym == NULL) {
+                        _bfd_error_handler("FIXUP at 0x%lx references undefined external [%d]",
+                                           (unsigned long)(p - tdata->image), frame);
+                        bfd_set_error(bfd_error_wrong_format);
+                        return false;
+                    }
                     break;
                 case OMF_FIXUPP_FRAME_EXPLICIT:      /* F3: explicit frame — invalid.  §7 item 3.  */
                     _bfd_error_handler("FIXUP at 0x%lx invalid explicit frame method F3",
@@ -2374,7 +2384,11 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
                 case OMF_FIXUPP_FRAME_LEIDATA:
                     break;
                 case OMF_FIXUPP_FRAME_TARGET:
-                    /* Frame derived from target's segment/group/external. */
+                    /* Frame derived from target's segment/group/external.
+                       Every symbol this backend creates is embedded in or
+                       allocated as an i386omf_symbol (EXTDEF via strtab_add,
+                       segment/group symbols via bfd_make_section), so the
+                       downcast is always valid within this backend.  */
                     frame_sym = (struct i386omf_symbol *) target_relent->symbol;
                     if (frame_sym == NULL)
                         break;
