@@ -1586,7 +1586,7 @@ i386omf_read_pubdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
 
     pubdef->base.name = pubdef->name.data;
     pubdef->base.flags |= BSF_GLOBAL;
-    pubdef->base.value = base_frame * 16 + offset;
+    pubdef->base.value = offset;
     pubdef->seg = strtab_lookup(tdata->segdef, base_segment);
     if (pubdef->seg)
     {
