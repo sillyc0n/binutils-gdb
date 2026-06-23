@@ -357,7 +357,6 @@ struct i386omf_obj_data
   struct i386omf_segment **comdat_segments;    /* §6.4: Borland COMDAT segments (sparse indices) */
   int num_comdat_segments;                     /* number of COMDAT segments allocated */
   int max_comdat_segments;                     /* capacity of comdat_segments array */
-  int next_comdat_segidx;                      /* next COMDAT segidx to allocate (0x4000+N) */
 };
 
 struct i386omf_relent
@@ -1449,10 +1448,6 @@ i386omf_read_comdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
             if (cs == NULL)
               return false;
           }
-          /* No next_comdat_segidx increment — none of the other
-             call sites do it, and this function uses
-             num_comdat_segments, not next_comdat_segidx, for
-             segment naming.  */
         }
         else
         {
@@ -3231,7 +3226,6 @@ i386omf_setup_tdata(bfd *abfd) {
         tdata->target_thread_used[i] = false;
     }
 
-    tdata->next_comdat_segidx = OMF_COMDAT_SEGIDX_BASE + 1;
     tdata->last_comdat_name_idx = -1;
 
     return true;
