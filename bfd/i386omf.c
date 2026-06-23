@@ -968,13 +968,31 @@ i386omf_read_coment(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
     case OMF_COMENT_DEFAULT_LIBRARY:
     case OMF_COMENT_MEMORY_MODEL:
     case OMF_COMENT_NEWEXT:
+    /* Defined but unhandled — silently skip per spec §3.  */
+    case OMF_COMENT_INTEL_COPYRIGHT:
+    case OMF_COMENT_DEFAULT_LIBRARY_OBS:
+    case OMF_COMENT_MSDOS_VERSION:
+    case OMF_COMENT_DOSSEG:
+    case OMF_COMENT_LIBMOD:
+    case OMF_COMENT_EXESTR:
+    case OMF_COMENT_INCERR:
+    case OMF_COMENT_NOPAD:
+    case OMF_COMENT_RANDOM_COMMENT:
+    case OMF_COMENT_COMPILER:
+    case OMF_COMENT_DATE:
+    case OMF_COMENT_TIME:
+    case OMF_COMENT_USER:
+    case OMF_COMENT_COMMAND_LINE:
       break;
     default:
-      _bfd_error_handler(
-          "Unknown record COMENT type: 0x%02x class: 0x%02x at 0x%04lx",
-          comment_type, comment_class, (unsigned long) (p - tdata->image - 1));
-      bfd_set_error(bfd_error_wrong_format);
-      return false;
+      /* Unrecognised comment class — silently ignore per TIS v1.1 §3.
+         Classes C0H–FFH are user-defined extensions; consumers must
+         skip them without error.  */
+      if (omf_debug) fprintf(stderr,
+          "COMENT class 0x%02x (type 0x%02x) at 0x%04lx: unknown, skipping\n",
+          comment_class, comment_type,
+          (unsigned long) (p - tdata->image - 1));
+      break;
   }
 
   return true;
