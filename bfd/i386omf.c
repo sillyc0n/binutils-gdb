@@ -39,6 +39,7 @@ omf_init_debug (void)
 #define OMF_RECORD_THEADR      0x80
 #define OMF_RECORD_LHEADR      0x82
 #define OMF_RECORD_COMENT      0x88
+#define OMF_RECORD_COMENT386   0x89
 #define OMF_RECORD_MODEND      0x8a
 #define OMF_RECORD_MODEND386   0x8b
 #define OMF_RECORD_EXTDEF      0x8c
@@ -131,6 +132,11 @@ omf_init_debug (void)
 #define OMF_COMENT_LINKER_DIRECTIVE2   0xfd
 #define OMF_COMENT_COMMAND_LINE        0xff
 #define OMF_COMENT_LIBRARY_COMMENT     0xff
+
+/* §3.1: Comment Type masks.  */
+#define OMF_COMENT_NP          0x80    /* No Purge — preserve in library */
+#define OMF_COMENT_NL          0x40    /* No List — suppress in listings */
+#define OMF_COMENT_RSVD_MASK   0x3f    /* Reserved bits 5-0; must be zero */
 
 #define OMF_MODEND_MAIN_MODULE         0x80
 #define OMF_MODEND_START_ADDRESS       0x40
@@ -340,6 +346,7 @@ struct i386omf_obj_data
   struct counted_string module_name;
   bool is_main_module;
   bool has_start_address;
+  bool pass_separator_seen;
   struct i386omf_start_addr start_addr;
   struct strtab* lnames;
   struct strtab* segdef;
@@ -875,6 +882,13 @@ i386omf_read_coment(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
   p += OMF_RECORD_HEADER_COMENT;
   reclen -= OMF_RECORD_HEADER_COMENT;
 
+  /* §3.1: NP (bit 7) and NL (bit 6) are purge/list flags;
+     bits 5-0 are reserved and must be zero.  */
+  if (comment_type & OMF_COMENT_RSVD_MASK)
+    if (omf_debug) fprintf(stderr,
+        "COMENT type 0x%02x has non-zero reserved bits 5-0 at 0x%04lx\n",
+        comment_type, (unsigned long) (p - tdata->image - 1));
+
   switch (comment_class)
   {
     case OMF_COMENT_TRANSLATOR:
@@ -899,7 +913,10 @@ i386omf_read_coment(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
       strncpy(tdata->translator, (char const*) p, reclen);
       tdata->translator[reclen] = 0;
       break;
-    case OMF_COMENT_PASS_SEPARATOR: /* We don't care about it. */
+    case OMF_COMENT_PASS_SEPARATOR:
+      /* §3.4: Pass-2 boundary marker.  Validated at MODEND time
+         (if a start address is also present).  */
+      tdata->pass_separator_seen = true;
       break;
     case OMF_COMENT_SYMBOL_TYPE_EXTDEF:
     case OMF_COMENT_SYMBOL_TYPE_PUBDEF:
@@ -945,6 +962,35 @@ i386omf_read_coment(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
         reclen -= slen;
       }
       break;
+    case OMF_COMENT_DLL_ENTRY:
+      /* §3.3: Class 0xA0 — OMF extensions, subtype dispatch.
+         Unknown subtypes are a fatal error for linkers.  */
+      if (reclen < 1)
+      {
+        _bfd_error_handler("COMENT class 0xA0 missing subtype byte");
+        bfd_set_error(bfd_error_wrong_format);
+        return false;
+      }
+      {
+        int subtype = bfd_get_8(abfd, p);
+        switch (subtype)
+        {
+          case 0x01: /* IMPDEF */ break;
+          case 0x02: /* EXPDEF */ break;
+          case 0x03: /* INCDEF */ break;
+          case 0x04: /* Protected memory lib */ break;
+          case 0x05: /* LNKDIR */ break;
+          case 0x06: /* Big-endian */ break;
+          case 0x07: /* PRECOMP */ break;
+          default:
+            _bfd_error_handler(
+                "COMENT class 0xA0 unknown subtype 0x%02x — fatal",
+                subtype);
+            bfd_set_error(bfd_error_wrong_format);
+            return false;
+        }
+      }
+      break;
     case OMF_COMENT_COMPILE_PARAMETERS:
     case OMF_COMENT_MATCHED_TYPE_EXTDEF:
     case OMF_COMENT_MATCHED_TYPE_PUBDEF:
@@ -958,16 +1004,15 @@ i386omf_read_coment(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
     case OMF_COMENT_OPT_FLAGS:
       /* http://webster.cs.ucr.edu/Page_TechDocs/boa.txt has record formats. */
       break;
-    case OMF_COMENT_EASY_OMF:
-    case OMF_COMENT_WAT_PROC_MODEL:
-    case OMF_COMENT_LINKER_DIRECTIVE:
-    case OMF_COMENT_LINKER_DIRECTIVE2:
-    case OMF_COMENT_DLL_ENTRY:
     case OMF_COMENT_WKEXT:
     case OMF_COMENT_LZEXT:
     case OMF_COMENT_DEFAULT_LIBRARY:
     case OMF_COMENT_MEMORY_MODEL:
     case OMF_COMENT_NEWEXT:
+    case OMF_COMENT_EASY_OMF:
+    case OMF_COMENT_WAT_PROC_MODEL:
+    case OMF_COMENT_LINKER_DIRECTIVE:
+    case OMF_COMENT_LINKER_DIRECTIVE2:
     /* Defined but unhandled — silently skip per spec §3.  */
     case OMF_COMENT_INTEL_COPYRIGHT:
     case OMF_COMENT_DEFAULT_LIBRARY_OBS:
@@ -1041,6 +1086,14 @@ i386omf_read_modend(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
   has_start = (module_type >> 6) & 1;
   tdata->has_start_address = has_start;
   tdata->start_addr.has_start = false;
+
+  if (has_start && tdata->pass_separator_seen)
+  {
+    (*_bfd_error_handler)(
+        "COMENT pass separator and MODEND start address in same module");
+    bfd_set_error(bfd_error_wrong_format);
+    return false;
+  }
 
   if (module_type & ~(OMF_MODEND_MAIN_MODULE | OMF_MODEND_START_ADDRESS))
   {
@@ -3150,6 +3203,7 @@ process_record(bfd *abfd,
                                             p, reclen);
             break;
         case OMF_RECORD_COMENT:
+        case OMF_RECORD_COMENT386:
             record_ok = i386omf_read_coment(abfd, p, reclen);
             break;
         case OMF_RECORD_MODEND:

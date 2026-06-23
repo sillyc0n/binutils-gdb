@@ -331,6 +331,24 @@ ob_modend (struct omf_buf *ob, int is_32bit, uint8_t flags)
   ob_write (ob, rec, n);
 }
 
+/* Write a COMENT (0x88) or COMENT386 (0x89) record.  */
+static void
+ob_coment (struct omf_buf *ob, int is32,
+           uint8_t comment_type, uint8_t comment_class,
+           const char *comment)
+{
+  int slen = strlen (comment) + 1;
+  uint8_t payload[256];
+  int plen = 0;
+  payload[plen++] = comment_type;
+  payload[plen++] = comment_class;
+  memcpy (payload + plen, comment, slen);
+  plen += slen;
+  uint8_t rec[512];
+  int n = omf_record (rec, is32 ? 0x89 : 0x88, payload, plen);
+  ob_write (ob, rec, n);
+}
+
 /* Append a variable-width communal length to buf at pos.
    Returns new pos.  Encoding per §4.4:
      0x00-0x80 → 1 byte, 0x81+LE16 → 3, 0x84+LE24 → 4, 0x88+LE32 → 5.  */
@@ -1753,6 +1771,121 @@ gen_zero_indices (const char *outdir)
 }
 
 /* ------------------------------------------------------------------ */
+/*  COMENT tests                                                       */
+/* ------------------------------------------------------------------ */
+
+/* COMENT with reserved bits 5-0 set (type=0x01).
+   Parser must accept it (warning only under omf_debug).  */
+static void
+gen_coment_reserved_type (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "coment_reserved_type");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 1, 16, 5, 2, 1, 0, 0);
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 0, data, 16);
+
+  /* Type=0x01 (reserved bit 0 set), class=0x00.  */
+  ob_coment (&ob, 1, 0x01, 0x00, "reserved-bits");
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/coment_reserved_type.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* COMENT class 0xA0 with unknown subtype 0xFF.
+   Parser must reject with a fatal error.  */
+static void
+gen_coment_unknown_subtype (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "coment_unknown_subtype");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 1, 16, 5, 2, 1, 0, 0);
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 0, data, 16);
+
+  /* Class=0xA0 with subtype 0xFF as first comment byte.  */
+  {
+    uint8_t payload[4];
+    int plen = 0;
+    payload[plen++] = 0x00;    /* type = standard */
+    payload[plen++] = 0xA0;    /* class = DLL_ENTRY / OMF extensions */
+    payload[plen++] = 0xFF;    /* subtype = unknown */
+    payload[plen++] = 0x00;    /* filler */
+    uint8_t rec[16];
+    int n = omf_record (rec, 0x89, payload, plen);
+    ob_write (&ob, rec, n);
+  }
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/coment_unknown_subtype.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* COMENT class 0xA2 (PASS_SEPARATOR) in a module with MODEND start address.
+   Parser must reject with a fatal error.  */
+static void
+gen_coment_passseparator_startaddr (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "coment_passsep_startaddr");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 1, 16, 5, 2, 1, 0, 0);
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 0, data, 16);
+
+  /* Class 0xA2 — pass separator.  */
+  ob_coment (&ob, 0, 0x00, 0xA2, "pass2");
+
+  /* MODEND with start address (bit 6 = 0x40, bit 0 = 0x01 for relocatable).  */
+  {
+    uint8_t mod_payload[6];
+    mod_payload[0] = 0x41;       /* Main=0, Strt=1, Reloc=1 */
+    mod_payload[1] = 0x00;       /* End Data: F=0 Frame=0 T=0 P=0 Targt=0 */
+    mod_payload[2] = 0x01;       /* Frame Datum: SEGDEF index 1 */
+    mod_payload[3] = 0x01;       /* Target Datum: SEGDEF index 1 */
+    put16le (mod_payload + 4, 0x0000);
+    uint8_t rec[16];
+    int n = omf_record (rec, 0x8a, mod_payload, 6);
+    ob_write (&ob, rec, n);
+  }
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/coment_passseparator_startaddr.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* ------------------------------------------------------------------ */
 /*  main                                                                */
 /* ------------------------------------------------------------------ */
 
@@ -1813,6 +1946,10 @@ main (int argc, char **argv)
   gen_alignment_6 (outdir);
   gen_alignment_7 (outdir);
   gen_zero_indices (outdir);
+
+  gen_coment_reserved_type (outdir);
+  gen_coment_unknown_subtype (outdir);
+  gen_coment_passseparator_startaddr (outdir);
 
   printf ("gentestomf: done\n");
   return 0;
