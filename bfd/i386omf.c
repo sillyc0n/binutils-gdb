@@ -2285,11 +2285,14 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
             target_relent->base.howto = howto;
             strtab_add(tdata->last_leidata->relocs, target_relent);
 
-            /* §7 item 10: F5 second-pass resolution.
-               F4 (FRAME_LEIDATA) was resolved inline above.
+            /* §7 item 10: second-pass frame-reloc emission.
+               F4 (FRAME_LEIDATA): frame is already the LEIDATA segment,
+               implicit in context — no frame reloc needed.
                F5 (FRAME_TARGET): derive frame symbol from TARGET's
                segment/group/external now that TARGET is known.  */
             switch (frame_method) {
+                case OMF_FIXUPP_FRAME_LEIDATA:
+                    break;
                 case OMF_FIXUPP_FRAME_TARGET:
                     /* Frame derived from target's segment/group/external. */
                     frame_sym = (struct i386omf_symbol *) target_relent->symbol;
