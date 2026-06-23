@@ -411,6 +411,104 @@ foreach errfile {lidata_truncated lidata_zero_segidx lidata_overflow} {
 }
 
 # -----------------------------------------------------------------------
+#  comdat_iterated.o — COMDAT386 with Iterated Data bit set (LIDATA payload)
+# -----------------------------------------------------------------------
+set test "OMF comdat iterated: format detection"
+set got [binutils_run $OBJDUMP "-x tmpdir/comdat_iterated.o"]
+if { [regexp "file format i386omf" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF comdat iterated: expanded size 15 bytes"
+if { [regexp "COMDAT_1.*0000000f" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF comdat iterated: content HELLO"
+set got [binutils_run $OBJDUMP "-s tmpdir/comdat_iterated.o"]
+if { [regexp "HELLO" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+# -----------------------------------------------------------------------
+#  comdat_continuation.o — two COMDAT386 records, second with Continuation bit
+# -----------------------------------------------------------------------
+set test "OMF comdat continuation: format detection"
+set got [binutils_run $OBJDUMP "-x tmpdir/comdat_continuation.o"]
+if { [regexp "file format i386omf" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF comdat continuation: combined size 12 bytes"
+if { [regexp "COMDAT_1.*0000000c" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+# -----------------------------------------------------------------------
+#  comdat_overflow.o — data payload > 1024 bytes (negative test)
+# -----------------------------------------------------------------------
+set test "OMF comdat overflow: rejected"
+set got [binutils_run $OBJDUMP "-x tmpdir/comdat_overflow.o"]
+if { [regexp "file format not recognized" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+# -----------------------------------------------------------------------
+#  comdat_bad_selcrit.o — reserved Selection Criteria value 4 (accepted)
+# -----------------------------------------------------------------------
+set test "OMF comdat bad selcrit: format detection"
+set got [binutils_run $OBJDUMP "-x tmpdir/comdat_bad_selcrit.o"]
+if { [regexp "file format i386omf" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF comdat bad selcrit: section size 16 bytes"
+if { [regexp "COMDAT_1.*00000010" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+# -----------------------------------------------------------------------
+#  comdat_linsym.o — COMDAT + LINSYM + FIXUPP chain
+# -----------------------------------------------------------------------
+set test "OMF comdat linsym: format detection"
+set got [binutils_run $OBJDUMP "-x tmpdir/comdat_linsym.o"]
+if { [regexp "file format i386omf" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF comdat linsym: HAS_SYMS"
+if { [regexp "HAS_SYMS" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF comdat linsym: RELOC"
+if { [regexp "RELOC" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+# -----------------------------------------------------------------------
 #  big_bit.o — 16-bit SEGDEF with B=1, seglen=0 → size 0x10000
 # -----------------------------------------------------------------------
 set test "OMF big bit: format detection"

@@ -348,6 +348,8 @@ struct i386omf_obj_data
   struct strtab* abs_pubdef;
   struct strtab* dependencies;
   struct i386omf_segment* last_leidata;        /* §1: most recent LEDATA/LIDATA/COMDAT for FIXUPP */
+  struct i386omf_segment* last_comdat_seg;     /* last synthetic COMDAT segment (continuation) */
+  int last_comdat_name_idx;                    /* last COMDAT's Public Name Index (-1 = none) */
   struct i386_fixup_thread frame_threads[4];   /* §3: FRAME thread slots 0-3 */
   struct i386_fixup_thread target_threads[4];  /* §3: TARGET thread slots 0-3 */
   bool frame_thread_used[4];                   /* §7 item 2: thread-defined check */
@@ -1187,6 +1189,7 @@ static bool
 i386omf_read_linsym(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
                      int is_32bit)
 {
+  struct i386omf_obj_data *tdata = abfd->tdata.any;
   bfd_size_type entry_size = is_32bit ? 6 : 4;
   bfd_size_type remaining;
   int name_index;
@@ -1202,6 +1205,15 @@ i386omf_read_linsym(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
 
   if (!i386omf_read_index(abfd, &name_index, &p, &reclen))
     return false;
+
+  /* A subsequent FIXUPP record attaches relocations to the COMDAT segment
+     identified by this LINSYM's Public Name Index.  Update last_leidata
+     so the FIXUPP handler finds the right segment.
+     FIXME: this only matches the most recent COMDAT segment.  A complete
+     fix would maintain a name-index-to-segment map for all COMDATs.  */
+  if (tdata->last_comdat_seg != NULL
+      && tdata->last_comdat_name_idx == name_index)
+    tdata->last_leidata = tdata->last_comdat_seg;
 
   remaining = reclen;
   if (remaining % entry_size != 0)
@@ -2875,7 +2887,12 @@ DESCRIPTION
 
     Attributes low nibble = Allocation Type.  If Explicit (0x00), the
     Public Base fields (Base Group, Base Segment, optional Base Frame)
-    are present.  The data is copied into a synthetic COMDAT segment.
+    are present.
+
+    Handles:
+      - Iterated Data (Flags bit 1): expands LIDATA-format data payload.
+      - Continuation (Flags bit 0): reuses the previous COMDAT's synthetic
+        segment, identified by Public Name Index match.
 
     @param abfd    The BFD file handle.
     @param p       Pointer to the record data.
@@ -2889,8 +2906,9 @@ i386omf_read_comdat(bfd *abfd, bfd_byte const *p,
     struct i386omf_obj_data *tdata = abfd->tdata.any;
     struct i386omf_segment *segdef;
     bfd_vma offset;
-    unsigned int flags, attributes, alloc_type, align_byte;
+    unsigned int flags, attributes, alloc_type, align_byte, sel_criteria;
     int type_idx, base_group, base_segment, base_frame, name_idx;
+    int is_32 = rectype & 1;
 
     /* Record start for diagnostic offsets.  */
     bfd_byte const *rec_start = p;
@@ -2903,15 +2921,27 @@ i386omf_read_comdat(bfd *abfd, bfd_byte const *p,
     if (reclen < 1) goto trunc;
     attributes = *p++; reclen--;
     alloc_type = attributes & 0x0F;
+    sel_criteria = (attributes >> 4) & 0x0F;
+
+    /* Reserve Selection Criteria values 0x4-0xF are spec violations.  */
+    if (sel_criteria > 3 && omf_debug)
+        fprintf(stderr, "COMDAT at 0x%lx: reserved selection criteria "
+                "value %d\n",
+                (unsigned long)(rec_start - tdata->image), sel_criteria);
 
     /* 3. Alignment byte.  */
     if (reclen < 1) goto trunc;
     align_byte = *p++; reclen--;
 
+    /* Reserved align values 6,7 are spec violations.  */
+    if (align_byte >= 6 && omf_debug)
+        fprintf(stderr, "COMDAT at 0x%lx: reserved alignment value %d\n",
+                (unsigned long)(rec_start - tdata->image), align_byte);
+
     /* 4. Enumerated Data Offset.  */
     if (!i386omf_read_offset(abfd, &offset, &p, &reclen,
-                             rectype & 1 ? I386OMF_OFFSET_SIZE_32
-                                         : I386OMF_OFFSET_SIZE_16))
+                             is_32 ? I386OMF_OFFSET_SIZE_32
+                                   : I386OMF_OFFSET_SIZE_16))
         return false;
 
     /* 5. Type Index — references a COMDEF definition.  */
@@ -2929,7 +2959,7 @@ i386omf_read_comdat(bfd *abfd, bfd_byte const *p,
             return false;
         if (base_segment == 0) {
             if (reclen < 2) goto trunc;
-            base_frame = p[0] | (p[1] << 8);
+            base_frame = (int) bfd_get_16(abfd, p);
             p += 2; reclen -= 2;
         }
     }
@@ -2938,22 +2968,88 @@ i386omf_read_comdat(bfd *abfd, bfd_byte const *p,
     if (!i386omf_read_index(abfd, &name_idx, &p, &reclen))
         return false;
 
-    /* Create a synthetic segment for this COMDAT's data.  */
-    segdef = i386omf_create_comdat_segment(abfd);
-    if (segdef == NULL)
-        return false;
+    /* 8. Segment selection / creation.
+       Continuation (bit 0): reuse previous COMDAT segment for same symbol.
+       Otherwise: create a new synthetic segment.  */
+    if ((flags & 0x01) && tdata->last_comdat_name_idx == name_idx
+        && tdata->last_comdat_seg != NULL) {
+        segdef = tdata->last_comdat_seg;
+    } else {
+        segdef = i386omf_create_comdat_segment(abfd);
+        if (segdef == NULL)
+            return false;
+        tdata->last_comdat_seg = segdef;
+        tdata->last_comdat_name_idx = name_idx;
+    }
 
     /* §7 item 1: COMDAT is a valid predecessor for FIXUPP.  */
     tdata->last_leidata = segdef;
-    segdef->last_data_offset = offset;
 
-    /* 8. Copy remaining bytes as data payload.  */
-    if (offset + reclen > segdef->asect->size)
-        segdef->asect->size = offset + reclen;
+    /* 9. Compute write position.
+       For continuation (bit 0), the offset is relative to the previous
+       COMDAT's data base (segdef->last_data_offset from the first record).
+       For non-continuation, the offset is absolute within the section.  */
+    bfd_vma write_offset = offset;
+    if (flags & 0x01)
+        write_offset = segdef->last_data_offset + offset;
 
-    if (!i386omf_add_section_data(abfd, segdef->asect, offset,
-                                  p, reclen, rectype))
+    /* Store the absolute section position so FIXUPP (which adds its own
+       relative offset to this base) computes correct relocation addresses,
+       and so chained continuations accumulate correctly.  */
+    segdef->last_data_offset = write_offset;
+
+    /* 10. Enforce 1024-byte max wire data payload (§6.4).
+           Iterated data may expand to a larger size after LIDATA expansion.  */
+    if (reclen > 1024) {
+        _bfd_error_handler("COMDAT at 0x%lx data payload %lu exceeds "
+                           "1024 byte maximum",
+                           (unsigned long)(rec_start - tdata->image),
+                           (unsigned long)reclen);
+        bfd_set_error(bfd_error_wrong_format);
         return false;
+    }
+
+    /* 11. Copy / expand data payload.  */
+    if (flags & 0x02) {
+        /* Iterated Data — expand LIDATA-format blocks.  */
+        struct i386omf_bytebuf expanded = { NULL, 0, 0 };
+        bfd_size_type consumed = 0;
+
+        if (!i386omf_expand_lidata_block(abfd, p, reclen, &consumed,
+                                         &expanded, is_32, 0)) {
+            free(expanded.data);
+            return false;
+        }
+
+        if (consumed != reclen) {
+            _bfd_error_handler("COMDAT iterated data at 0x%lx has %lu "
+                               "leftover byte(s)",
+                               (unsigned long)(rec_start - tdata->image),
+                               (unsigned long)(reclen - consumed));
+            bfd_set_error(bfd_error_wrong_format);
+            free(expanded.data);
+            return false;
+        }
+
+        if (write_offset + expanded.len > segdef->asect->size)
+            segdef->asect->size = write_offset + expanded.len;
+
+        if (!i386omf_add_expanded_lidata(abfd, segdef->asect, write_offset,
+                                         expanded.data, expanded.len)) {
+            free(expanded.data);
+            return false;
+        }
+
+        free(expanded.data);
+    } else {
+        /* Enumerated data — raw bytes.  */
+        if (write_offset + reclen > segdef->asect->size)
+            segdef->asect->size = write_offset + reclen;
+
+        if (!i386omf_add_section_data(abfd, segdef->asect, write_offset,
+                                      p, reclen, rectype))
+            return false;
+    }
 
     segdef->asect->flags |= SEC_HAS_CONTENTS | SEC_LOAD | SEC_ALLOC;
 
@@ -2999,6 +3095,18 @@ process_record(bfd *abfd,
     struct i386omf_obj_data *tdata = abfd->tdata.any;
     bool record_ok;
     if (omf_debug) fprintf(stderr, "i386omf process_record rectype: 0x%2x, reclen: %llu\n", rectype, (unsigned long long)reclen);
+
+    /* Clear COMDAT continuation tracking on non-COMDAT, non-FIXUPP, non-LINSYM records.
+       This prevents stale re-use if unrelated records appear between two
+       continuation COMDATs. LINSYM is excluded because it sits between a COMDAT
+       and its associated FIXUPP in the record stream and must not break the chain.  */
+    if (rectype != OMF_RECORD_COMDAT && rectype != OMF_RECORD_COMDAT386
+        && rectype != OMF_RECORD_FIXUPP && rectype != OMF_RECORD_FIXUPP386
+        && rectype != OMF_RECORD_LINSYM && rectype != OMF_RECORD_LINSYM386) {
+        tdata->last_comdat_seg = NULL;
+        tdata->last_comdat_name_idx = -1;
+    }
+
     switch (rectype) {
         case OMF_RECORD_THEADR: /* Translator header. */
             record_ok = i386omf_read_string(abfd, &tdata->module_name,
@@ -3120,6 +3228,7 @@ i386omf_setup_tdata(bfd *abfd) {
     }
 
     tdata->next_comdat_segidx = OMF_COMDAT_SEGIDX_BASE + 1;
+    tdata->last_comdat_name_idx = -1;
 
     return true;
 }

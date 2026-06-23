@@ -654,6 +654,74 @@ gen_linsym (const char *outdir)
   printf ("  wrote %s (%d bytes)\n", path, ob.len);
 }
 
+/* comdat_linsym.o — COMDAT + LINSYM + FIXUPP sequence.
+   Tests that LINSYM correctly sets last_leidata so a subsequent
+   FIXUPP can relocate within the COMDAT data without error.  */
+static void
+gen_comdat_linsym (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "comdat_linsym");
+  ob_lnames (&ob, "_TEXT");
+  ob_lnames (&ob, "COMDAT_DATA");
+  ob_segdef (&ob, 1, 32, 5, 2, 1, 0, 0);
+
+  /* COMDAT386 record with COMDAT_DATA data.  */
+  {
+    uint8_t payload[256];
+    int plen = 0;
+    payload[plen++] = 0x00;                 /* Flags = 0 */
+    payload[plen++] = 0x00;                 /* Attributes: sel=Match, alloc=Explicit */
+    payload[plen++] = 0;                    /* Align = 0 */
+    put32le (payload + plen, 0); plen += 4; /* Offset = 0 */
+    plen += omf_index (payload + plen, 0);  /* Type Index = 0 */
+    plen += omf_index (payload + plen, 0);  /* Base Group = 0 */
+    plen += omf_index (payload + plen, 0);  /* Base Segment = 0 */
+    put16le (payload + plen, 0); plen += 2; /* Base Frame = 0 */
+    plen += omf_index (payload + plen, 2);  /* Public Name = COMDAT_DATA */
+    memset (payload + plen, 0x90, 8); plen += 8;
+
+    uint8_t rec[512];
+    int n = omf_record (rec, 0xc3, payload, plen);
+    ob_write (&ob, rec, n);
+  }
+
+  /* LINSYM (0xC4, 16-bit) referencing COMDAT_DATA (LNAMES idx 2).  */
+  {
+    uint8_t ls_payload[64];
+    int plen = 0;
+    ls_payload[plen++] = 0x00;               /* flags */
+    plen += omf_index (ls_payload + plen, 2); /* Public Name = COMDAT_DATA */
+    put16le (ls_payload + plen, 10); plen += 2; /* line 10, offset 0 */
+    put16le (ls_payload + plen, 0);  plen += 2;
+    uint8_t rec[512];
+    int n = omf_record (rec, 0xc4, ls_payload, plen);
+    ob_write (&ob, rec, n);
+  }
+
+  /* FIXUPP (0x9C) — simple relocation referencing SEGDEF index 1 (_TEXT).  */
+  {
+    uint8_t fixup[32];
+    int fn = build_fixup (fixup, 1, 0, 0,    /* loc=1, self-rel, offset=0 */
+                          0x00,               /* F=0 Frame=0 T=0 P=0 Targt=0 */
+                          1, 1,               /* frame_idx=1, target_idx=1 */
+                          0, 0);              /* displacement=0 */
+    ob_fixupp (&ob, 0, fixup, fn);
+  }
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/comdat_linsym.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
 /* symbols.o — EXTDEF and PUBDEF symbols.  */
 static void
 gen_symbols (const char *outdir)
@@ -1131,6 +1199,199 @@ gen_comdat (const char *outdir)
   printf ("  wrote %s (%d bytes)\n", path, ob.len);
 }
 
+/* comdat_iterated.o — COMDAT386 with Iterated Data (bit 1) set, LIDATA payload.
+   LIDATA leaf: RepeatCount=3, BlockCount=0, count=5, data="HELLO"
+   Expected expansion: 15 bytes.  */
+static void
+gen_comdat_iterated (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "comdat_iterated");
+  ob_lnames (&ob, "_TEXT");
+  ob_lnames (&ob, "COMDAT_DATA");
+  ob_segdef (&ob, 1, 32, 5, 2, 1, 0, 0);
+
+  uint8_t payload[256];
+  int plen = 0;
+  payload[plen++] = 0x02;                 /* Flags = Iterated Data */
+  payload[plen++] = 0x00;                 /* Attributes: sel=Match, alloc=Explicit */
+  payload[plen++] = 0;                    /* Align = 0 (use SEGDEF) */
+  put32le (payload + plen, 0); plen += 4; /* Enumerated Data Offset = 0 */
+  plen += omf_index (payload + plen, 0);  /* Type Index = 0 */
+  plen += omf_index (payload + plen, 0);  /* Base Group = 0 */
+  plen += omf_index (payload + plen, 0);  /* Base Segment = 0 */
+  put16le (payload + plen, 0); plen += 2; /* Base Frame = 0 */
+  plen += omf_index (payload + plen, 2);  /* Public Name Index = 2 */
+  /* LIDATA data block (32-bit Repeat Count for 0xC3): */
+  put32le (payload + plen, 3); plen += 4; /* RepeatCount = 3 */
+  put16le (payload + plen, 0); plen += 2; /* BlockCount = 0 (leaf) */
+  payload[plen++] = 5;                    /* count = 5 */
+  memcpy (payload + plen, "HELLO", 5); plen += 5;
+
+  uint8_t rec[512];
+  int n = omf_record (rec, 0xc3, payload, plen);
+  ob_write (&ob, rec, n);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/comdat_iterated.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* comdat_continuation.o — two COMDAT386 records for same symbol.
+   First:  flags=0x00, offset=0, 8 bytes of 0x90.
+   Second: flags=0x01 (Continuation), offset=8, 4 bytes of 0xAA.
+   Expected: single synthetic seg with 12 bytes.  */
+static void
+gen_comdat_continuation (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "comdat_continuation");
+  ob_lnames (&ob, "_TEXT");
+  ob_lnames (&ob, "COMDAT_DATA");
+  ob_segdef (&ob, 1, 32, 5, 2, 1, 0, 0);
+
+  /* First COMDAT: enumerated, 8 bytes of 0x90.  */
+  {
+    uint8_t payload[256];
+    int plen = 0;
+    payload[plen++] = 0x00;                 /* Flags = 0 */
+    payload[plen++] = 0x00;                 /* Attributes: sel=Match, alloc=Explicit */
+    payload[plen++] = 0;                    /* Align = 0 */
+    put32le (payload + plen, 0); plen += 4; /* Offset = 0 */
+    plen += omf_index (payload + plen, 0);  /* Type Index = 0 */
+    plen += omf_index (payload + plen, 0);  /* Base Group = 0 */
+    plen += omf_index (payload + plen, 0);  /* Base Segment = 0 */
+    put16le (payload + plen, 0); plen += 2; /* Base Frame = 0 */
+    plen += omf_index (payload + plen, 2);  /* Public Name = COMDAT_DATA */
+    memset (payload + plen, 0x90, 8); plen += 8;
+
+    uint8_t rec[512];
+    int n = omf_record (rec, 0xc3, payload, plen);
+    ob_write (&ob, rec, n);
+  }
+
+  /* Second COMDAT: continuation, offset=8, 4 bytes of 0xAA.  */
+  {
+    uint8_t payload[256];
+    int plen = 0;
+    payload[plen++] = 0x01;                 /* Flags = Continuation */
+    payload[plen++] = 0x00;                 /* Attributes: sel=Match, alloc=Explicit */
+    payload[plen++] = 0;                    /* Align = 0 */
+    put32le (payload + plen, 8); plen += 4; /* Offset = 8 */
+    plen += omf_index (payload + plen, 0);  /* Type Index = 0 */
+    plen += omf_index (payload + plen, 0);  /* Base Group = 0 */
+    plen += omf_index (payload + plen, 0);  /* Base Segment = 0 */
+    put16le (payload + plen, 0); plen += 2; /* Base Frame = 0 */
+    plen += omf_index (payload + plen, 2);  /* Public Name = COMDAT_DATA */
+    memset (payload + plen, 0xAA, 4); plen += 4;
+
+    uint8_t rec[512];
+    int n = omf_record (rec, 0xc3, payload, plen);
+    ob_write (&ob, rec, n);
+  }
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/comdat_continuation.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* comdat_overflow.o — COMDAT386 with data > 1024 bytes (negative test).  */
+static void
+gen_comdat_overflow (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "comdat_overflow");
+  ob_lnames (&ob, "_TEXT");
+  ob_lnames (&ob, "COMDAT_DATA");
+  ob_segdef (&ob, 1, 2048, 5, 2, 1, 0, 0);
+
+  uint8_t payload[2048];
+  int plen = 0;
+  payload[plen++] = 0x00;                 /* Flags = 0 */
+  payload[plen++] = 0x00;                 /* Attributes: sel=Match, alloc=Explicit */
+  payload[plen++] = 0;                    /* Align = 0 */
+  put32le (payload + plen, 0); plen += 4; /* Offset = 0 */
+  plen += omf_index (payload + plen, 0);  /* Type Index = 0 */
+  plen += omf_index (payload + plen, 0);  /* Base Group = 0 */
+  plen += omf_index (payload + plen, 0);  /* Base Segment = 0 */
+  put16le (payload + plen, 0); plen += 2; /* Base Frame = 0 */
+  plen += omf_index (payload + plen, 2);  /* Public Name = COMDAT_DATA */
+  memset (payload + plen, 0xFF, 1500); plen += 1500; /* >1024 data */
+
+  uint8_t rec[2048 + 16];
+  int n = omf_record (rec, 0xc3, payload, plen);
+  ob_write (&ob, rec, n);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/comdat_overflow.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* comdat_bad_selcrit.o — COMDAT386 with reserved Selection Criteria value 4.
+   Expected: accepted (warning only).  */
+static void
+gen_comdat_bad_selcrit (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "comdat_bad_selcrit");
+  ob_lnames (&ob, "_TEXT");
+  ob_lnames (&ob, "COMDAT_DATA");
+  ob_segdef (&ob, 1, 32, 5, 2, 1, 0, 0);
+
+  uint8_t payload[256];
+  int plen = 0;
+  payload[plen++] = 0x00;                 /* Flags = 0 */
+  payload[plen++] = 0x40;                 /* Attributes: sel=4(reserved), alloc=Explicit */
+  payload[plen++] = 0;                    /* Align = 0 */
+  put32le (payload + plen, 0); plen += 4; /* Offset = 0 */
+  plen += omf_index (payload + plen, 0);  /* Type Index = 0 */
+  plen += omf_index (payload + plen, 0);  /* Base Group = 0 */
+  plen += omf_index (payload + plen, 0);  /* Base Segment = 0 */
+  put16le (payload + plen, 0); plen += 2; /* Base Frame = 0 */
+  plen += omf_index (payload + plen, 2);  /* Public Name = COMDAT_DATA */
+  memset (payload + plen, 0x90, 16); plen += 16;
+
+  uint8_t rec[512];
+  int n = omf_record (rec, 0xc3, payload, plen);
+  ob_write (&ob, rec, n);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/comdat_bad_selcrit.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
 /* Write an unrecognized/ignored record to test skipping by length. */
 static void
 ob_unrecognized (struct omf_buf *ob, int rectype, int plen)
@@ -1525,6 +1786,7 @@ main (int argc, char **argv)
   gen_section_offsets (outdir);
   gen_symbols (outdir);
   gen_linsym (outdir);
+  gen_comdat_linsym (outdir);
   gen_fixups_simple (outdir);
   gen_fixups_threads (outdir);
   gen_fixups_all (outdir);
@@ -1534,6 +1796,10 @@ main (int argc, char **argv)
   gen_error_f3_frame (outdir);
   gen_comdef (outdir);
   gen_comdat (outdir);
+  gen_comdat_iterated (outdir);
+  gen_comdat_continuation (outdir);
+  gen_comdat_overflow (outdir);
+  gen_comdat_bad_selcrit (outdir);
   gen_skipped_record (outdir);
 
   gen_lidata_simple (outdir);
