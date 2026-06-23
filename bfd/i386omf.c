@@ -1953,8 +1953,20 @@ i386omf_read_segdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32
         segdefs_seen++;
     }
 
-    if (reclen || segdefs_seen != 1)
-        if (omf_debug) fprintf(stderr, "SEGDEF record doesn't contain exactly one segment definition\n");
+    /* Per TIS v1.1, a SEGDEF record describes exactly one segment.
+       Legacy OMF producers may pack multiple segment definitions into a
+       single record; the loop above handles that compatibility case.
+       A record with zero definitions is always malformed.  */
+    if (segdefs_seen == 0) {
+        _bfd_error_handler("SEGDEF record at 0x%lx contains no segment definitions",
+                           (unsigned long)(p - tdata->image));
+        bfd_set_error(bfd_error_wrong_format);
+        return false;
+    }
+    if (reclen || segdefs_seen > 1)
+        if (omf_debug) fprintf(stderr,
+            "SEGDEF record contains %d segment definitions (old-format multi-segment style)\n",
+            segdefs_seen);
 
     return true;
 }
