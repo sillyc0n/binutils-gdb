@@ -2133,6 +2133,17 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
             struct i386omf_relent *target_relent, *frame_relent;
             struct i386omf_symbol *sym, *frame_sym;
             reloc_howto_type *howto;
+            /* Generic same-segment tracking for the optimization applied
+               once both FRAME and TARGET are fully known (see the unified
+               check after the second-pass FRAME switch below).  Set
+               whenever FRAME or TARGET resolve to a SEGDEF-backed
+               section — directly (F0/T0/T4), via LEIDATA context (F4),
+               or, for FRAME only, via F5's deferred resolution to
+               TARGET's own segment.  GRPDEF/EXTDEF frames or targets
+               leave the corresponding pointer NULL, so the same-segment
+               check naturally never fires for those methods.  */
+            struct i386omf_segment *frame_segdef = NULL;
+            struct i386omf_segment *target_segdef = NULL;
 
             /* §7 item 1: Reject FIXUP subrecord if no preceding data record.  */
             if (tdata->last_leidata == NULL) {
@@ -2307,6 +2318,11 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
                         bfd_set_error(bfd_error_wrong_format);
                         return false;
                     }
+                    /* Assign the real segment symbol for now.  Whether
+                       this collapses to an absolute (same-segment) reloc
+                       is decided generically, for every FRAME method
+                       including F5, once FRAME is fully resolved — see
+                       the unified same-segment check below.  */
                     target_relent->symbol = segdef->asect->symbol;
                     target_segdef = segdef;
                     break;
@@ -2394,14 +2410,17 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
                                       : -bfd_get_reloc_size(howto));
             target_relent->base.howto = howto;
 
-            /* §7 item 10: second-pass frame derivation.
-               F4 (FRAME_LEIDATA): frame_segdef already set when FRAME
+            /* §7 item 10: second-pass frame resolution + generic
+               same-segment optimization.
+               F4 (FRAME_LEIDATA): frame_segdef was already set when FRAME
                was resolved above (frame is implicit LEIDATA context).
                F5 (FRAME_TARGET): frame *is* TARGET's own segment/group/
-               external by definition, so once TARGET is known we set
-               frame_segdef = target_segdef for the same-segment check
-               below.  GRPDEF/EXTDEF targets leave target_segdef==NULL,
-               which correctly excludes those from the optimization.  */
+               external by definition, so once TARGET is known we can
+               always set frame_segdef = target_segdef here (it will be
+               NULL when TARGET is a GRPDEF/EXTDEF, which correctly
+               excludes those from the SEGDEF-only same-segment check
+               below — there is no segment-level cancellation to make in
+               that case, only a symbol-level WRT relationship).  */
             switch (frame_method) {
                 case OMF_FIXUPP_FRAME_LEIDATA:
                     break;
@@ -2419,49 +2438,69 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
             }
 
             /* Generic same-segment optimization: applies uniformly to
-               F0/F4/F5 frames against a SEGDEF target.  When FRAME and
-               TARGET name the same segment, the OMF formula
-               (S_target - S_frame + displacement) reduces to just
-               displacement.  Rewrite the TARGET reloc to use an
-               absolute symbol (value 0) so the generic relocation
+               F0/F4/F5 frames against a SEGDEF target, regardless of how
+               FRAME was resolved.  When FRAME and TARGET name the same
+               segment, the OMF formula (S_target - S_frame + displacement)
+               reduces to just displacement.  Rewrite the TARGET reloc to
+               use an absolute symbol (value 0) so the generic relocation
                handler computes 0 + addend = addend rather than
-               segment_base + addend.  Skip the WRTSEG marker reloc
-               below since the frame relationship has been folded into
-               the absolute symbol.  GRPDEF/EXTDEF frames or targets
-               leave frame_segdef/target_segdef NULL and so never match
-               here — correctly, since "same segment" has no meaning
-               for them.  */
+               segment_base + addend, and skip the WRTSEG marker reloc
+               below since there is no longer a frame relationship left
+               to express.  GRPDEF/EXTDEF frames or targets leave
+               frame_segdef/target_segdef NULL and so never match here —
+               correctly, since "same segment" has no meaning for them. */
             if (frame_segdef != NULL
                 && target_segdef != NULL
                 && frame_segdef == target_segdef)
             {
+                /* The addend computed above does not depend on which
+                   symbol the reloc carries — only on displacement and
+                   mode — so no recomputation is needed here; only the
+                   symbol changes.  */
                 target_relent->symbol = bfd_abs_section_ptr->symbol;
 
                 /* Patch the section data directly so that objdump -d
                    shows the correct displacement inline (objdump reads
                    raw section contents, not relocated contents, for
-                   relocatable object files).  */
-                if (tdata->last_leidata->asect->contents != NULL) {
+                   relocatable object files).  Use the addend already
+                   computed above rather than the raw displacement, so
+                   self-relative (M=1) fixups get the same pcrel bias
+                   baked into the patched bytes that the relocation
+                   entry itself carries — otherwise a same-segment
+                   self-relative reference would show an un-biased
+                   value in the disassembly.  */
+                if (tdata->last_leidata->asect->contents != NULL)
+                {
+                    /* Deliberately bitsize/8, not bfd_get_reloc_size:
+                       EMPTY_HOWTO entries (e.g. PC-relative SEG, FAR16,
+                       FAR32) have bitsize == 0 but bfd_get_reloc_size
+                       maps size == 0 to 1, which would wrongly enable
+                       a 1-byte patch for a howto that was never meant
+                       to be applied directly.  bitsize/8 correctly
+                       yields 0 for those, so the psize > 0 guard below
+                       still excludes them as intended.  */
                     unsigned int psize = howto->bitsize / 8;
                     bfd_vma paddr = tdata->last_leidata->last_data_offset
                                     + offset;
 
                     if (psize > 0
-                        && paddr + psize <= tdata->last_leidata->asect->size) {
+                        && paddr + psize <= tdata->last_leidata->asect->size)
+                    {
                         bfd_byte *ploc
                             = tdata->last_leidata->asect->contents + paddr;
                         bfd_vma pval = target_relent->base.addend;
 
-                        switch (psize) {
-                            case 1:
-                                bfd_put_8 (abfd, pval & 0xff, ploc);
-                                break;
-                            case 2:
-                                bfd_put_16 (abfd, pval & 0xffff, ploc);
-                                break;
-                            case 4:
-                                bfd_put_32 (abfd, pval & 0xffffffff, ploc);
-                                break;
+                        switch (psize)
+                        {
+                        case 1:
+                            bfd_put_8 (abfd, pval & 0xff, ploc);
+                            break;
+                        case 2:
+                            bfd_put_16 (abfd, pval & 0xffff, ploc);
+                            break;
+                        case 4:
+                            bfd_put_32 (abfd, pval & 0xffffffff, ploc);
+                            break;
                         }
                     }
                 }
@@ -2469,13 +2508,18 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
 
             strtab_add(tdata->last_leidata->relocs, target_relent);
 
-            /* Emit WRTSEG marker reloc for any FRAME method that
+            /* Emit the WRTSEG marker reloc for any FRAME method that
                still needs to express a separate frame relationship.
                F4 needs no marker (frame is implicit LEIDATA context).
-               Same-segment refs already folded into *ABS* — no WRT
-               relationship left.  F5 with a GRPDEF/EXTDEF target has
-               frame_sym == NULL (that derivation isn't implemented)
-               and cannot produce a valid WRTSEG either.  */
+               The same-segment case above already opted out by leaving
+               target_relent->symbol absolute; check that directly rather
+               than re-deriving frame/target equality, since it is the
+               exact condition the optimization created.
+               F5 against a target whose symbol is NULL (e.g. a GRPDEF
+               target, for which frame derivation isn't implemented)
+               has no usable frame symbol either — skip the marker
+               rather than emit one with a NULL symbol, matching the
+               original F5 behavior.  */
             if (frame_method != OMF_FIXUPP_FRAME_LEIDATA
                 && target_relent->symbol != bfd_abs_section_ptr->symbol
                 && !(frame_method == OMF_FIXUPP_FRAME_TARGET && frame_sym == NULL))
