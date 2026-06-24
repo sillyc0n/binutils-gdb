@@ -2127,12 +2127,6 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
         if (subrec & OMF_FIXUPP_FIXUP) {    // this is a fixup field (§4)
             int location, fixdata;
             int frame_method, frame = 0, target_method, target = 0;
-            struct i386omf_segment *frame_segdef = NULL;
-            struct i386omf_segment *target_segdef = NULL;
-            bfd_size_type offset, displacement = 0;
-            struct i386omf_relent *target_relent, *frame_relent;
-            struct i386omf_symbol *sym, *frame_sym;
-            reloc_howto_type *howto;
             /* Generic same-segment tracking for the optimization applied
                once both FRAME and TARGET are fully known (see the unified
                check after the second-pass FRAME switch below).  Set
@@ -2144,6 +2138,10 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
                check naturally never fires for those methods.  */
             struct i386omf_segment *frame_segdef = NULL;
             struct i386omf_segment *target_segdef = NULL;
+            bfd_size_type offset, displacement = 0;
+            struct i386omf_relent *target_relent, *frame_relent;
+            struct i386omf_symbol *sym, *frame_sym;
+            reloc_howto_type *howto;
 
             /* §7 item 1: Reject FIXUP subrecord if no preceding data record.  */
             if (tdata->last_leidata == NULL) {
