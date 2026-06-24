@@ -2127,6 +2127,8 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
         if (subrec & OMF_FIXUPP_FIXUP) {    // this is a fixup field (§4)
             int location, fixdata;
             int frame_method, frame = 0, target_method, target = 0;
+            struct i386omf_segment *frame_segdef = NULL;
+            struct i386omf_segment *target_segdef = NULL;
             bfd_size_type offset, displacement = 0;
             struct i386omf_relent *target_relent, *frame_relent;
             struct i386omf_symbol *sym, *frame_sym;
@@ -2211,6 +2213,7 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
                         return false;
                     }
                     frame_sym = (struct i386omf_symbol *) segdef->asect->symbol;
+                    frame_segdef = segdef;
                     break;
                 case OMF_FIXUPP_FRAME_GRPDEF:        /* F1: GRPDEF index.  */
                     if (!(fixdata & OMF_FIX_DATA_FRAME_THREAD)
@@ -2244,6 +2247,7 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
                     return false;
                 case OMF_FIXUPP_FRAME_LEIDATA:       /* F4: frame = preceding LEDATA's segment.  */
                     frame_sym = (struct i386omf_symbol *) tdata->last_leidata->asect->symbol;
+                    frame_segdef = tdata->last_leidata;
                     break;
                 case OMF_FIXUPP_FRAME_TARGET:        /* F5: frame = TARGET's segment/group/external.
                                                          Resolved in second pass (§4.4, §7 item 10).  */
@@ -2304,6 +2308,7 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
                         return false;
                     }
                     target_relent->symbol = segdef->asect->symbol;
+                    target_segdef = segdef;
                     break;
                 case OMF_FIXUPP_TARGET_GRPDEF:               // T1: GRPDEF index + displacement
                 case OMF_FIXUPP_TARGET_NODISP | OMF_FIXUPP_TARGET_GRPDEF:  // T5: GRPDEF index only
@@ -2388,13 +2393,15 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
                                       ? 0
                                       : -bfd_get_reloc_size(howto));
             target_relent->base.howto = howto;
-            strtab_add(tdata->last_leidata->relocs, target_relent);
 
-            /* §7 item 10: second-pass frame-reloc emission.
-               F4 (FRAME_LEIDATA): frame is already the LEIDATA segment,
-               implicit in context — no frame reloc needed.
-               F5 (FRAME_TARGET): derive frame symbol from TARGET's
-               segment/group/external now that TARGET is known.  */
+            /* §7 item 10: second-pass frame derivation.
+               F4 (FRAME_LEIDATA): frame_segdef already set when FRAME
+               was resolved above (frame is implicit LEIDATA context).
+               F5 (FRAME_TARGET): frame *is* TARGET's own segment/group/
+               external by definition, so once TARGET is known we set
+               frame_segdef = target_segdef for the same-segment check
+               below.  GRPDEF/EXTDEF targets leave target_segdef==NULL,
+               which correctly excludes those from the optimization.  */
             switch (frame_method) {
                 case OMF_FIXUPP_FRAME_LEIDATA:
                     break;
@@ -2405,20 +2412,83 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
                        segment/group symbols via bfd_make_section), so the
                        downcast is always valid within this backend.  */
                     frame_sym = (struct i386omf_symbol *) target_relent->symbol;
-                    if (frame_sym == NULL)
-                        break;
-                    /* fall through */
-                default:
-                    frame_relent = bfd_alloc(abfd, sizeof(*frame_relent));
-                    if (frame_relent == NULL)
-                        return false;
-                    frame_relent->symbol = frame_sym ? &frame_sym->base : NULL;
-                    frame_relent->base.sym_ptr_ptr = &frame_relent->symbol;
-                    frame_relent->base.address = tdata->last_leidata->last_data_offset + offset;
-                    frame_relent->base.addend = 0;
-                    frame_relent->base.howto = &howto_wrt_segdef;
-                    strtab_add(tdata->last_leidata->relocs, frame_relent);
+                    frame_segdef = target_segdef;
                     break;
+                default:
+                    break;
+            }
+
+            /* Generic same-segment optimization: applies uniformly to
+               F0/F4/F5 frames against a SEGDEF target.  When FRAME and
+               TARGET name the same segment, the OMF formula
+               (S_target - S_frame + displacement) reduces to just
+               displacement.  Rewrite the TARGET reloc to use an
+               absolute symbol (value 0) so the generic relocation
+               handler computes 0 + addend = addend rather than
+               segment_base + addend.  Skip the WRTSEG marker reloc
+               below since the frame relationship has been folded into
+               the absolute symbol.  GRPDEF/EXTDEF frames or targets
+               leave frame_segdef/target_segdef NULL and so never match
+               here — correctly, since "same segment" has no meaning
+               for them.  */
+            if (frame_segdef != NULL
+                && target_segdef != NULL
+                && frame_segdef == target_segdef)
+            {
+                target_relent->symbol = bfd_abs_section_ptr->symbol;
+
+                /* Patch the section data directly so that objdump -d
+                   shows the correct displacement inline (objdump reads
+                   raw section contents, not relocated contents, for
+                   relocatable object files).  */
+                if (tdata->last_leidata->asect->contents != NULL) {
+                    unsigned int psize = howto->bitsize / 8;
+                    bfd_vma paddr = tdata->last_leidata->last_data_offset
+                                    + offset;
+
+                    if (psize > 0
+                        && paddr + psize <= tdata->last_leidata->asect->size) {
+                        bfd_byte *ploc
+                            = tdata->last_leidata->asect->contents + paddr;
+                        bfd_vma pval = target_relent->base.addend;
+
+                        switch (psize) {
+                            case 1:
+                                bfd_put_8 (abfd, pval & 0xff, ploc);
+                                break;
+                            case 2:
+                                bfd_put_16 (abfd, pval & 0xffff, ploc);
+                                break;
+                            case 4:
+                                bfd_put_32 (abfd, pval & 0xffffffff, ploc);
+                                break;
+                        }
+                    }
+                }
+            }
+
+            strtab_add(tdata->last_leidata->relocs, target_relent);
+
+            /* Emit WRTSEG marker reloc for any FRAME method that
+               still needs to express a separate frame relationship.
+               F4 needs no marker (frame is implicit LEIDATA context).
+               Same-segment refs already folded into *ABS* — no WRT
+               relationship left.  F5 with a GRPDEF/EXTDEF target has
+               frame_sym == NULL (that derivation isn't implemented)
+               and cannot produce a valid WRTSEG either.  */
+            if (frame_method != OMF_FIXUPP_FRAME_LEIDATA
+                && target_relent->symbol != bfd_abs_section_ptr->symbol
+                && !(frame_method == OMF_FIXUPP_FRAME_TARGET && frame_sym == NULL))
+            {
+                frame_relent = bfd_alloc(abfd, sizeof(*frame_relent));
+                if (frame_relent == NULL)
+                    return false;
+                frame_relent->symbol = frame_sym ? &frame_sym->base : NULL;
+                frame_relent->base.sym_ptr_ptr = &frame_relent->symbol;
+                frame_relent->base.address = tdata->last_leidata->last_data_offset + offset;
+                frame_relent->base.addend = 0;
+                frame_relent->base.howto = &howto_wrt_segdef;
+                strtab_add(tdata->last_leidata->relocs, frame_relent);
             }
 
             abfd->flags |= HAS_SYMS;
@@ -3889,8 +3959,53 @@ i386omf_canonicalize_reloc(bfd *abfd ATTRIBUTE_UNUSED,
     return n;
 }
 
-#define i386omf_bfd_reloc_type_lookup bfd_default_reloc_type_lookup
-#define i386omf_bfd_reloc_name_lookup _bfd_norelocs_bfd_reloc_name_lookup
+static reloc_howto_type *
+i386omf_bfd_reloc_type_lookup (bfd *abfd ATTRIBUTE_UNUSED,
+                               bfd_reloc_code_real_type code)
+{
+    switch (code)
+    {
+        case BFD_RELOC_8:
+            return &howto_table_i386omf_segrel[R_I386OMF_LO8];
+        case BFD_RELOC_16:
+            return &howto_table_i386omf_segrel[R_I386OMF_OFF16];
+        case BFD_RELOC_32:
+            return &howto_table_i386omf_segrel[R_I386OMF_OFF32];
+        case BFD_RELOC_8_PCREL:
+            return &howto_table_i386omf_pcrel[R_I386OMF_LO8];
+        case BFD_RELOC_16_PCREL:
+            return &howto_table_i386omf_pcrel[R_I386OMF_OFF16];
+        case BFD_RELOC_32_PCREL:
+            return &howto_table_i386omf_pcrel[R_I386OMF_OFF32];
+        default:
+            return NULL;
+    }
+}
+
+static reloc_howto_type *
+i386omf_bfd_reloc_name_lookup (bfd *abfd ATTRIBUTE_UNUSED,
+                               const char *name)
+{
+    unsigned int i;
+
+    for (i = 0; i < sizeof (howto_table_i386omf_segrel)
+                    / sizeof (howto_table_i386omf_segrel[0]); i++)
+        if (howto_table_i386omf_segrel[i].name
+            && strcmp (howto_table_i386omf_segrel[i].name, name) == 0)
+            return &howto_table_i386omf_segrel[i];
+
+    for (i = 0; i < sizeof (howto_table_i386omf_pcrel)
+                    / sizeof (howto_table_i386omf_pcrel[0]); i++)
+        if (howto_table_i386omf_pcrel[i].name
+            && strcmp (howto_table_i386omf_pcrel[i].name, name) == 0)
+            return &howto_table_i386omf_pcrel[i];
+
+    if (howto_wrt_segdef.name
+        && strcmp (howto_wrt_segdef.name, name) == 0)
+        return &howto_wrt_segdef;
+
+    return NULL;
+}
 
 /* Set the architecture of a binary file.  */
 #define binary_set_arch_mach _bfd_generic_set_arch_mach
