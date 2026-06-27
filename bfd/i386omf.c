@@ -2109,6 +2109,57 @@ i386omf_fix_wrt_frame(bfd *abfd ATTRIBUTE_UNUSED,
     return bfd_reloc_ok;
 }
 
+/* Helper: read a value from section contents at (seg->last_data_offset + offset)
+   using howto->bitsize for the width.  Returns true on success, false if
+   contents are unavailable, psize == 0, or the range is out of bounds.  */
+static bool
+i386omf_seg_read_value (bfd *abfd, struct i386omf_segment *seg,
+                         bfd_size_type offset, reloc_howto_type *howto,
+                         bfd_vma *value)
+{
+  unsigned int psize = howto->bitsize / 8;
+  bfd_vma paddr = seg->last_data_offset + offset;
+
+  if (psize == 0 || seg->asect->contents == NULL
+      || paddr + psize > seg->asect->size)
+    return false;
+
+  bfd_byte *ploc = seg->asect->contents + paddr;
+
+  switch (psize)
+    {
+    case 1: *value = bfd_get_8 (abfd, ploc); return true;
+    case 2: *value = bfd_get_16 (abfd, ploc); return true;
+    case 4: *value = bfd_get_32 (abfd, ploc); return true;
+    default: return false;
+    }
+}
+
+/* Helper: write a value into section contents at (seg->last_data_offset + offset)
+   using howto->bitsize for the width.  Silently does nothing if contents are
+   unavailable, psize == 0, or the range is out of bounds.  */
+static void
+i386omf_seg_write_value (bfd *abfd, struct i386omf_segment *seg,
+                          bfd_size_type offset, reloc_howto_type *howto,
+                          bfd_vma value)
+{
+  unsigned int psize = howto->bitsize / 8;
+  bfd_vma paddr = seg->last_data_offset + offset;
+
+  if (psize == 0 || seg->asect->contents == NULL
+      || paddr + psize > seg->asect->size)
+    return;
+
+  bfd_byte *ploc = seg->asect->contents + paddr;
+
+  switch (psize)
+    {
+    case 1: bfd_put_8 (abfd, value & 0xff, ploc); break;
+    case 2: bfd_put_16 (abfd, value & 0xffff, ploc); break;
+    case 4: bfd_put_32 (abfd, value & 0xffffffff, ploc); break;
+    }
+}
+
 /*
     i386omf_read_fixupp
 
@@ -2427,36 +2478,11 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
                       : howto_table_i386omf_pcrel)[location];
 
             /* P=1: displacement is embedded in the instruction bytes,
-               not in the FIXUPP stream.  Read it from section contents
-               so the addend (and any same-segment section-data patch)
-               carries the correct value.  */
+               not the FIXUPP stream; read it from section contents.  */
             if ((fixdata & OMF_FIX_DATA_P_MASK)
-                && tdata->last_leidata != NULL
-                && tdata->last_leidata->asect->contents != NULL)
-            {
-                unsigned int psize = howto->bitsize / 8;
-                bfd_vma paddr = tdata->last_leidata->last_data_offset + offset;
-
-                if (psize > 0
-                    && paddr + psize <= tdata->last_leidata->asect->size)
-                {
-                    bfd_byte *ploc
-                        = tdata->last_leidata->asect->contents + paddr;
-
-                    switch (psize)
-                    {
-                    case 1:
-                        displacement = bfd_get_8 (abfd, ploc);
-                        break;
-                    case 2:
-                        displacement = bfd_get_16 (abfd, ploc);
-                        break;
-                    case 4:
-                        displacement = bfd_get_32 (abfd, ploc);
-                        break;
-                    }
-                }
-            }
+                && tdata->last_leidata != NULL)
+                i386omf_seg_read_value (abfd, tdata->last_leidata,
+                                        offset, howto, &displacement);
 
             target_relent->base.addend
                     = displacement + (subrec & OMF_FIXUP_SEGREL
@@ -2513,52 +2539,17 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
                    symbol changes.  */
                 target_relent->symbol = bfd_abs_section_ptr->symbol;
 
-                /* Patch the section data directly so that objdump -d
-                   shows the correct displacement inline (objdump reads
-                   raw section contents, not relocated contents, for
-                   relocatable object files).  Use the addend already
-                   computed above rather than the raw displacement, so
-                   self-relative (M=1) fixups get the same pcrel bias
-                   baked into the patched bytes that the relocation
-                   entry itself carries — otherwise a same-segment
-                   self-relative reference would show an un-biased
-                   value in the disassembly.  */
-                if (tdata->last_leidata->asect->contents != NULL)
-                {
-                    /* Deliberately bitsize/8, not bfd_get_reloc_size:
-                       EMPTY_HOWTO entries (e.g. PC-relative SEG, FAR16,
-                       FAR32) have bitsize == 0 but bfd_get_reloc_size
-                       maps size == 0 to 1, which would wrongly enable
-                       a 1-byte patch for a howto that was never meant
-                       to be applied directly.  bitsize/8 correctly
-                       yields 0 for those, so the psize > 0 guard below
-                       still excludes them as intended.  */
-                    unsigned int psize = howto->bitsize / 8;
-                    bfd_vma paddr = tdata->last_leidata->last_data_offset
-                                    + offset;
-
-                    if (psize > 0
-                        && paddr + psize <= tdata->last_leidata->asect->size
-                        && !(fixdata & OMF_FIX_DATA_P_MASK))
-                    {
-                        bfd_byte *ploc
-                            = tdata->last_leidata->asect->contents + paddr;
-                        bfd_vma pval = target_relent->base.addend;
-
-                        switch (psize)
-                        {
-                        case 1:
-                            bfd_put_8 (abfd, pval & 0xff, ploc);
-                            break;
-                        case 2:
-                            bfd_put_16 (abfd, pval & 0xffff, ploc);
-                            break;
-                        case 4:
-                            bfd_put_32 (abfd, pval & 0xffffffff, ploc);
-                            break;
-                        }
-                    }
-                }
+                /* P=0: the displacement was read from the FIXUPP stream
+                   and baked into the addend (with pcrel bias subtracted
+                   for M=0/self-relative fixups).  Patch it into the
+                   section data so objdump -d shows the correct value
+                   from raw section contents.  P=1 fixups are skipped
+                   here — the displacement is already correct in the
+                   instruction bytes and must not be overwritten.  */
+                if (!(fixdata & OMF_FIX_DATA_P_MASK))
+                    i386omf_seg_write_value (abfd, tdata->last_leidata,
+                                             offset, howto,
+                                             target_relent->base.addend);
             }
 
             strtab_add(tdata->last_leidata->relocs, target_relent);
