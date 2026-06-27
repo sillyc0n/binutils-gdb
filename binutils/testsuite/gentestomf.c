@@ -1845,7 +1845,9 @@ gen_coment_unknown_subtype (const char *outdir)
 }
 
 /* COMENT class 0xA2 (PASS_SEPARATOR) in a module with MODEND start address.
-   Parser must reject with a fatal error.  */
+   MASM 5.1 and other two-pass assemblers emit both; the parser must
+   accept the combination — the start address in MODEND is always
+   in the pass-2 portion.  */
 static void
 gen_coment_passseparator_startaddr (const char *outdir)
 {

@@ -140,6 +140,11 @@ omf_init_debug (void)
 
 #define OMF_MODEND_MAIN_MODULE         0x80
 #define OMF_MODEND_START_ADDRESS       0x40
+/* §2.2: Bit 0 (X) — relocatable flag; present when Start bit is set.  */
+#define OMF_MODEND_RELOCATABLE         0x01
+/* Bits 5-1 are reserved and must be zero; bits 7, 6, 0 are meaningful.  */
+#define OMF_MODEND_RESERVED_MASK \
+    (~(OMF_MODEND_MAIN_MODULE | OMF_MODEND_START_ADDRESS | OMF_MODEND_RELOCATABLE) & 0xff)
 
 #define OMF_PUBDEF_SEGMENT_ABSOLUTE    OMF_SEGDEF_NONE
 
@@ -188,7 +193,7 @@ omf_init_debug (void)
 #define OMF_FIXUPP_FRAME_SEGDEF        0        /* F0: SEGDEF index */
 #define OMF_FIXUPP_FRAME_GRPDEF        1        /* F1: GRPDEF index */
 #define OMF_FIXUPP_FRAME_EXTDEF        2        /* F2: EXTDEF index */
-#define OMF_FIXUPP_FRAME_EXPLICIT      3        /* F3: explicit frame — invalid/unsupported */
+#define OMF_FIXUPP_FRAME_EXPLICIT      3        /* F3: explicit 16-bit frame number (valid in MODEND; see §3.1) */
 #define OMF_FIXUPP_FRAME_LEIDATA       4        /* F4: frame = preceding LEDATA's segment */
 #define OMF_FIXUPP_FRAME_TARGET        5        /* F5: frame = TARGET's segment/group/external */
 
@@ -346,7 +351,10 @@ struct i386omf_obj_data
   struct counted_string module_name;
   bool is_main_module;
   bool has_start_address;
-  bool pass_separator_seen;
+  bool pass_separator_seen;   /* Set when a Link Pass Separator COMENT (class 0xA2)
+                                 is seen.  Informational only — no validation depends
+                                 on it; MODEND's start address is always accepted
+                                 regardless of whether a pass separator was seen.  */
   struct i386omf_start_addr start_addr;
   struct strtab* lnames;
   struct strtab* segdef;
@@ -914,8 +922,9 @@ i386omf_read_coment(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
       tdata->translator[reclen] = 0;
       break;
     case OMF_COMENT_PASS_SEPARATOR:
-      /* §3.4: Pass-2 boundary marker.  Validated at MODEND time
-         (if a start address is also present).  */
+      /* §3.4: Pass-2 boundary marker.  Recorded for informational
+         purposes — the start address in MODEND is always valid
+         regardless of whether a pass separator was seen.  */
       tdata->pass_separator_seen = true;
       break;
     case OMF_COMENT_SYMBOL_TYPE_EXTDEF:
@@ -1087,15 +1096,7 @@ i386omf_read_modend(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
   tdata->has_start_address = has_start;
   tdata->start_addr.has_start = false;
 
-  if (has_start && tdata->pass_separator_seen)
-  {
-    (*_bfd_error_handler)(
-        "COMENT pass separator and MODEND start address in same module");
-    bfd_set_error(bfd_error_wrong_format);
-    return false;
-  }
-
-  if (module_type & ~(OMF_MODEND_MAIN_MODULE | OMF_MODEND_START_ADDRESS))
+  if (module_type & OMF_MODEND_RESERVED_MASK)
   {
     if (omf_debug) fprintf(stderr, "MODEND Module Type 0x%02x has non-standard bits set.\n",
                             module_type);
@@ -1104,7 +1105,7 @@ i386omf_read_modend(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
   /* §MODEND-specific rule: if START (bit 6) is set, the relocatable bit
      (bit 0) must also be set.  LINK does not support an absolute
      (non-relocatable) start address.  */
-  if (has_start && (module_type & 0x01) == 0)
+  if (has_start && (module_type & OMF_MODEND_RELOCATABLE) == 0)
     {
       (*_bfd_error_handler)("MODEND start address is not relocatable (bit 0 must be set).");
       bfd_set_error(bfd_error_wrong_format);
@@ -1141,9 +1142,13 @@ i386omf_read_modend(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
   /* --- FRAME (§4.4) --- */
   if (fixdata & OMF_FIX_DATA_FRAME_THREAD)
   {
-    /* F=1: FRAME from thread slot */
+    /* F=1: FRAME from thread slot.
+       §3.1: End Data Frame field is 3 bits (bits 6–4).  This backend's
+       thread-slot array has 4 entries (matching FIXUPP convention), so
+       thread numbers 4–7 are out of range and treated as an error rather
+       than silently aliased via masking.  */
     int frame_tnum = (fixdata & OMF_FIX_DATA_FRAME_MASK)
-                     >> OMF_FIX_DATA_FRAME_SHIFT & 3;
+                     >> OMF_FIX_DATA_FRAME_SHIFT;
     if (frame_tnum > 3 || !tdata->frame_thread_used[frame_tnum])
     {
       (*_bfd_error_handler)("MODEND start address references undefined FRAME thread %d",
@@ -1169,13 +1174,25 @@ i386omf_read_modend(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
                                  &p, &reclen))
           return false;
         break;
-      case OMF_FIXUPP_FRAME_EXPLICIT: /* F3 — invalid */
-      case 6:                          /* F6 — invalid */
+      case OMF_FIXUPP_FRAME_EXPLICIT: /* F3: 16-bit absolute frame number, per MODEND spec §3.1 */
+        if (reclen < 2)
+        {
+          (*_bfd_error_handler)("MODEND start address truncated at FRAME datum.");
+          bfd_set_error(bfd_error_wrong_format);
+          return false;
+        }
+        tdata->start_addr.frame_idx = bfd_get_16(abfd, p);
+        p += 2;
+        reclen -= 2;
+        break;
+      case OMF_FIXUPP_FRAME_LEIDATA: /* F4: frame = preceding LEDATA's segment; no datum */
+      case OMF_FIXUPP_FRAME_TARGET:  /* F5: frame = TARGET's segment/group/external; no datum */
+        break;
+      default:                        /* F6, F7: undefined per spec */
         (*_bfd_error_handler)("MODEND start address invalid FRAME method %d.",
                                frame_method);
         bfd_set_error(bfd_error_wrong_format);
         return false;
-      /* F4 (LEIDATA), F5 (TARGET): no datum to read */
     }
   }
 
@@ -1227,6 +1244,12 @@ i386omf_read_modend(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
                             is_32bit ? I386OMF_OFFSET_SIZE_32
                                      : I386OMF_OFFSET_SIZE_16))
     return false;
+
+  /* Any bytes remaining before the checksum are malformed per spec §11,
+     but tolerated for forward-compatibility (matching spec guidance).  */
+  if (reclen > 0 && omf_debug)
+    fprintf(stderr, "MODEND has %lu trailing byte(s) before checksum (tolerated).\n",
+            (unsigned long) reclen);
 
   tdata->start_addr.has_start = true;
   return true;
