@@ -2425,6 +2425,39 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
             howto = &(subrec & OMF_FIXUP_SEGREL                     // M bit: 1=segrel, 0=self-rel
                       ? howto_table_i386omf_segrel
                       : howto_table_i386omf_pcrel)[location];
+
+            /* P=1: displacement is embedded in the instruction bytes,
+               not in the FIXUPP stream.  Read it from section contents
+               so the addend (and any same-segment section-data patch)
+               carries the correct value.  */
+            if ((fixdata & OMF_FIX_DATA_P_MASK)
+                && tdata->last_leidata != NULL
+                && tdata->last_leidata->asect->contents != NULL)
+            {
+                unsigned int psize = howto->bitsize / 8;
+                bfd_vma paddr = tdata->last_leidata->last_data_offset + offset;
+
+                if (psize > 0
+                    && paddr + psize <= tdata->last_leidata->asect->size)
+                {
+                    bfd_byte *ploc
+                        = tdata->last_leidata->asect->contents + paddr;
+
+                    switch (psize)
+                    {
+                    case 1:
+                        displacement = bfd_get_8 (abfd, ploc);
+                        break;
+                    case 2:
+                        displacement = bfd_get_16 (abfd, ploc);
+                        break;
+                    case 4:
+                        displacement = bfd_get_32 (abfd, ploc);
+                        break;
+                    }
+                }
+            }
+
             target_relent->base.addend
                     = displacement + (subrec & OMF_FIXUP_SEGREL
                                       ? 0
@@ -2505,7 +2538,8 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
                                     + offset;
 
                     if (psize > 0
-                        && paddr + psize <= tdata->last_leidata->asect->size)
+                        && paddr + psize <= tdata->last_leidata->asect->size
+                        && !(fixdata & OMF_FIX_DATA_P_MASK))
                     {
                         bfd_byte *ploc
                             = tdata->last_leidata->asect->contents + paddr;
