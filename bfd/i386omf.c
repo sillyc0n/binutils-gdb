@@ -2463,11 +2463,11 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
             }
 
             /* NOTE: The self-relative addend bias below uses
-               -bfd_get_reloc_size(howto).  This file's howto entries use a
-               log2 size convention (0→1, 1→2, 2→4 bytes).  The bias equals
-               -(1 << howto->size) only when howto->size encodes log2 of
-               bytes, which holds for every non-EMPTY entry in the pcrel
-               table.  If a non-power-of-two howto is added, this breaks.  */
+               -(1 << howto->size).  This file's howto entries use a
+               log2 size convention (0→1, 1→2, 2→4 bytes) so the bias
+               equals -(1 << howto->size) — correctly -2 for OFF16, -4
+               for OFF32, -1 for LO8/HI8.  If a non-power-of-two howto
+               is added, this breaks.  */
 
             /* §7 (BFD relocation generation): Build arelent from decoded fixup.
                howto selected by (location, mode=M bit).  */
@@ -2487,7 +2487,7 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
             target_relent->base.addend
                     = displacement + (subrec & OMF_FIXUP_SEGREL
                                       ? 0
-                                      : -bfd_get_reloc_size(howto));
+                                      : -(1 << bfd_get_reloc_size(howto)));
             target_relent->base.howto = howto;
 
             /* §7 item 10: second-pass frame resolution + generic
