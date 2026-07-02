@@ -858,10 +858,10 @@ binary_mkobject(bfd* abfd ATTRIBUTE_UNUSED)
 }
 
 /*
-    i386omf_read_coment
+    i386omf_process_comment_record
 
 SYNOPSIS
-    static bool i386omf_read_coment(bfd* abfd, bfd_byte const* p, bfd_size_type reclen);
+    static bool i386omf_process_comment_record(bfd* abfd, bfd_byte const* p, bfd_size_type reclen);
 
 DESCRIPTION
     Reads and processes an OMF COMENT record. Handles various comment classes,
@@ -873,7 +873,7 @@ DESCRIPTION
     @return       true on success, false on error.
 */
 static bool
-i386omf_read_coment(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
+i386omf_process_comment_record(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
 {
   struct i386omf_obj_data* tdata = abfd->tdata.any;
   int comment_type, comment_class;
@@ -1053,10 +1053,10 @@ i386omf_read_coment(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
 }
 
 /*
-    i386omf_read_modend
+    i386omf_process_modend_record
 
 SYNOPSIS
-    static bool i386omf_read_modend(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
+    static bool i386omf_process_modend_record(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
                                      int is_32bit);
 
 DESCRIPTION
@@ -1072,7 +1072,7 @@ DESCRIPTION
     @return        true on success, false on error.
 */
 static bool
-i386omf_read_modend(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
+i386omf_process_modend_record(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
                      int is_32bit)
 {
   struct i386omf_obj_data* tdata = abfd->tdata.any;
@@ -1266,10 +1266,10 @@ i386omf_read_modend(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
 }
 
 /*
-    i386omf_read_linsym
+    i386omf_process_linsym_record
 
 SYNOPSIS
-    static bool i386omf_read_linsym(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
+    static bool i386omf_process_linsym_record(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
                                      int is_32bit);
 
 DESCRIPTION
@@ -1289,7 +1289,7 @@ DESCRIPTION
     @return        true on success, false on error.
 */
 static bool
-i386omf_read_linsym(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
+i386omf_process_linsym_record(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
                      int is_32bit)
 {
   struct i386omf_obj_data *tdata = abfd->tdata.any;
@@ -1434,10 +1434,10 @@ i386omf_read_comdef_length(bfd* abfd, bfd_byte const** p,
 }
 
 /*
-    i386omf_read_comdef
+    i386omf_process_comdef_record
 
 SYNOPSIS
-    static bool i386omf_read_comdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen);
+    static bool i386omf_process_comdef_record(bfd* abfd, bfd_byte const* p, bfd_size_type reclen);
 
 DESCRIPTION
     Reads and processes an OMF COMDEF record (0xB0), which defines communal
@@ -1459,7 +1459,7 @@ DESCRIPTION
     @return       true on success, false on error.
 */
 static bool
-i386omf_read_comdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
+i386omf_process_comdef_record(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
 {
   struct i386omf_obj_data* tdata = abfd->tdata.any;
 
@@ -1570,10 +1570,10 @@ i386omf_read_comdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
 }
 
 /*
-    i386omf_read_extdef
+    i386omf_process_extdef_record
 
 SYNOPSIS
-    static bool i386omf_read_extdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen);
+    static bool i386omf_process_extdef_record(bfd* abfd, bfd_byte const* p, bfd_size_type reclen);
 
 DESCRIPTION
     Reads and processes an OMF EXTDEF record, which defines external symbols.
@@ -1585,7 +1585,7 @@ DESCRIPTION
     @return       true on success, false on error.
 */
 static bool
-i386omf_read_extdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
+i386omf_process_extdef_record(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
 {
   struct i386omf_obj_data* tdata = abfd->tdata.any;
 
@@ -1622,10 +1622,10 @@ i386omf_read_extdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen)
 
 /*
 
-    i386omf_read_pubdef
+    i386omf_process_pubdef_record
 
 SYNOPSIS
-    static bool i386omf_read_pubdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen, int is32);
+    static bool i386omf_process_pubdef_record(bfd* abfd, bfd_byte const* p, bfd_size_type reclen, int is32);
 
 DESCRIPTION
     Reads and processes an OMF PUBDEF record, which defines public (exported) symbols.
@@ -1639,7 +1639,7 @@ DESCRIPTION
     @return       true on success, false on error.
 */
 static bool
-i386omf_read_pubdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
+i386omf_process_pubdef_record(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
                     int is32)
 {
   struct i386omf_obj_data* tdata = abfd->tdata.any;
@@ -1767,10 +1767,10 @@ i386omf_read_pubdef(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
 }
 
 /*
-    i386omf_read_lnames
+    i386omf_process_lnames_record
 
 SYNOPSIS
-    static bool i386omf_read_lnames(bfd *abfd, bfd_byte const *p, bfd_size_type reclen);
+    static bool i386omf_process_lnames_record(bfd *abfd, bfd_byte const *p, bfd_size_type reclen);
 
 DESCRIPTION
     Reads and processes an OMF LNAMES record, which defines a list of names.
@@ -1782,7 +1782,7 @@ DESCRIPTION
     @return       true on success, false on error.
 */
 static bool
-i386omf_read_lnames(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
+i386omf_process_lnames_record(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
     struct i386omf_obj_data *tdata = abfd->tdata.any;
 
     while (reclen) {
@@ -1806,10 +1806,10 @@ i386omf_read_lnames(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
 }
 
 /*
-    i386omf_read_segdef
+    i386omf_process_segdef_record
 
 SYNOPSIS
-    static bool i386omf_read_segdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32);
+    static bool i386omf_process_segdef_record(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32);
 
 DESCRIPTION
     Reads and processes an OMF SEGDEF record, which defines a segment.
@@ -1830,7 +1830,7 @@ static const unsigned int alignment_powers_16[] = {0, 0, 1, 4,  8, 2, 4, (unsign
 static const unsigned int alignment_powers_32[] = {0, 0, 1, 4, 12, 2, 4, (unsigned int)-1};
 
 static bool
-i386omf_read_segdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32) {
+i386omf_process_segdef_record(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32) {
     struct i386omf_obj_data *tdata = abfd->tdata.any;
     const unsigned int *alignment_powers = is32 ? alignment_powers_32 : alignment_powers_16;
     int segdefs_seen = 0;
@@ -2008,10 +2008,10 @@ i386omf_read_segdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is32
 }
 
 /*
-    i386omf_read_grpdef
+    i386omf_process_grpdef_record
 
 SYNOPSIS
-    static bool i386omf_read_grpdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen);
+    static bool i386omf_process_grpdef_record(bfd *abfd, bfd_byte const *p, bfd_size_type reclen);
 
 DESCRIPTION
     Reads and processes an OMF GRPDEF record, which defines a group of segments.
@@ -2023,7 +2023,7 @@ DESCRIPTION
     @return       true on success, false on error.
 */
 static bool
-i386omf_read_grpdef(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
+i386omf_process_grpdef_record(bfd *abfd, bfd_byte const *p, bfd_size_type reclen) {
     struct i386omf_obj_data *tdata = abfd->tdata.any;
     struct i386omf_group *grpdef;
     struct counted_string *s;
@@ -2171,10 +2171,10 @@ i386omf_seg_write_value (bfd *abfd, struct i386omf_segment *seg,
 }
 
 /*
-    i386omf_read_fixupp
+    i386omf_process_fixupp_record
 
 SYNOPSIS
-    static bool i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen);
+    static bool i386omf_process_fixupp_record(bfd *abfd, bfd_byte const *p, bfd_size_type reclen);
 
 DESCRIPTION
     Reads and processes an OMF FIXUPP record (0x9C or 0x9D), which describes
@@ -2196,7 +2196,7 @@ DESCRIPTION
     @return        true on success, false on error.
 */
 static bool
-i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_32bit) {
+i386omf_process_fixupp_record(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_32bit) {
     struct i386omf_obj_data *tdata = abfd->tdata.any;
     bfd_byte const *q;
 
@@ -2906,10 +2906,10 @@ i386omf_add_expanded_lidata (bfd *abfd, struct bfd_section *asect,
 }
 
 /*
-    i386omf_read_lidata
+    i386omf_process_lidata_record
 
 SYNOPSIS
-    static bool i386omf_read_lidata(bfd *abfd, bfd_byte const *p,
+    static bool i386omf_process_lidata_record(bfd *abfd, bfd_byte const *p,
                                      bfd_size_type reclen, int rectype);
 
 DESCRIPTION
@@ -2924,7 +2924,7 @@ DESCRIPTION
     @return        true on success, false on error.
 */
 static bool
-i386omf_read_lidata (bfd *abfd, bfd_byte const *p,
+i386omf_process_lidata_record (bfd *abfd, bfd_byte const *p,
                       bfd_size_type reclen, int rectype)
 {
   struct i386omf_obj_data *tdata = abfd->tdata.any;
@@ -3041,7 +3041,7 @@ DESCRIPTION
     contents if needed.  Reports errors for overflows or allocation failures.
 
     Note: LIDATA records no longer reach this function — they have their
-    own dedicated handler (i386omf_read_lidata) that performs scratch-buffer
+    own dedicated handler (i386omf_process_lidata_record) that performs scratch-buffer
     expansion before a single bounds-checked copy.
 
     @param abfd    The BFD file handle.
@@ -3085,10 +3085,10 @@ i386omf_add_section_data(bfd *abfd,
 }
 
 /*
-    i386omf_read_leidata
+    i386omf_process_leidata_record
 
 SYNOPSIS
-    static bool i386omf_read_leidata(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int rectype);
+    static bool i386omf_process_leidata_record(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int rectype);
 
 DESCRIPTION
     Reads and processes an OMF LEDATA or LIDATA record, adding its contents to the appropriate section.
@@ -3101,7 +3101,7 @@ DESCRIPTION
     @return        true on success, false on error.
 */
 static bool
-i386omf_read_leidata(bfd *abfd, bfd_byte const *p,
+i386omf_process_leidata_record(bfd *abfd, bfd_byte const *p,
                      bfd_size_type reclen, int rectype) {
     struct i386omf_obj_data *tdata = abfd->tdata.any;
     struct i386omf_segment *segdef;
@@ -3162,10 +3162,10 @@ i386omf_read_leidata(bfd *abfd, bfd_byte const *p,
 }
 
 /*
-    i386omf_read_comdat
+    i386omf_process_comdat_record
 
 SYNOPSIS
-    static bool i386omf_read_comdat(bfd *abfd, bfd_byte const *p,
+    static bool i386omf_process_comdat_record(bfd *abfd, bfd_byte const *p,
                                     bfd_size_type reclen, int rectype);
 
 DESCRIPTION
@@ -3193,7 +3193,7 @@ DESCRIPTION
     @return        true on success, false on error.
 */
 static bool
-i386omf_read_comdat(bfd *abfd, bfd_byte const *p,
+i386omf_process_comdat_record(bfd *abfd, bfd_byte const *p,
                     bfd_size_type reclen, int rectype) {
     struct i386omf_obj_data *tdata = abfd->tdata.any;
     struct i386omf_segment *segdef;
@@ -3406,63 +3406,63 @@ process_record(bfd *abfd,
             break;
         case OMF_RECORD_COMENT:
         case OMF_RECORD_COMENT386:
-            record_ok = i386omf_read_coment(abfd, p, reclen);
+            record_ok = i386omf_process_comment_record(abfd, p, reclen);
             break;
         case OMF_RECORD_MODEND:
         case OMF_RECORD_MODEND386:
-            record_ok = i386omf_read_modend(abfd, p, reclen, rectype & 1);
+            record_ok = i386omf_process_modend_record(abfd, p, reclen, rectype & 1);
             break;
         case OMF_RECORD_EXTDEF:
         case OMF_RECORD_LEXTDEF:
         case OMF_RECORD_LEXTDEF386:
-            record_ok = i386omf_read_extdef(abfd, p, reclen);
+            record_ok = i386omf_process_extdef_record(abfd, p, reclen);
             break;
         case OMF_RECORD_LPUBDEF:
         case OMF_RECORD_LPUBDEF386:
         case OMF_RECORD_PUBDEF:
         case OMF_RECORD_PUBDEF386:
-            record_ok = i386omf_read_pubdef(abfd, p, reclen, rectype & 1);
+            record_ok = i386omf_process_pubdef_record(abfd, p, reclen, rectype & 1);
             break;
         case OMF_RECORD_LINNUM:
         case OMF_RECORD_LINNUM386:
             record_ok = true; /* Line numbers record.  Too lazy now. */
             break;
         case OMF_RECORD_LNAMES: /* List of names. */
-            record_ok = i386omf_read_lnames(abfd, p, reclen);
+            record_ok = i386omf_process_lnames_record(abfd, p, reclen);
             break;
         case OMF_RECORD_SEGDEF:
         case OMF_RECORD_SEGDEF386:
-            record_ok = i386omf_read_segdef(abfd, p, reclen, rectype & 1);
+            record_ok = i386omf_process_segdef_record(abfd, p, reclen, rectype & 1);
             break;
         case OMF_RECORD_GRPDEF:
-            record_ok = i386omf_read_grpdef(abfd, p, reclen);
+            record_ok = i386omf_process_grpdef_record(abfd, p, reclen);
             break;
         /* §1 + §2: FIXUPP records (0x9C/0x9D).
            The caller has already removed the 3-byte header and excluded the
            checksum byte.  is_32bit = rectype & 1 distinguishes 9D vs 9C.  */
         case OMF_RECORD_FIXUPP:
         case OMF_RECORD_FIXUPP386:
-            record_ok = i386omf_read_fixupp(abfd, p, reclen, rectype & 1);
+            record_ok = i386omf_process_fixupp_record(abfd, p, reclen, rectype & 1);
             break;
         case OMF_RECORD_LEDATA:
         case OMF_RECORD_LEDATA386:
-            record_ok = i386omf_read_leidata(abfd, p, reclen, rectype);
+            record_ok = i386omf_process_leidata_record(abfd, p, reclen, rectype);
             break;
         case OMF_RECORD_LIDATA:
         case OMF_RECORD_LIDATA386:
-            record_ok = i386omf_read_lidata(abfd, p, reclen, rectype);
+            record_ok = i386omf_process_lidata_record(abfd, p, reclen, rectype);
             break;
         case OMF_RECORD_COMDAT:
         case OMF_RECORD_COMDAT386:
-            record_ok = i386omf_read_comdat(abfd, p, reclen, rectype);
+            record_ok = i386omf_process_comdat_record(abfd, p, reclen, rectype);
             break;
         case OMF_RECORD_LINSYM:
         case OMF_RECORD_LINSYM386:
-            record_ok = i386omf_read_linsym(abfd, p, reclen, rectype & 1);
+            record_ok = i386omf_process_linsym_record(abfd, p, reclen, rectype & 1);
             break;
         case OMF_RECORD_COMDEF:
         case OMF_RECORD_LCOMDEF:
-            record_ok = i386omf_read_comdef(abfd, p, reclen);
+            record_ok = i386omf_process_comdef_record(abfd, p, reclen);
             break;
         default:
             if (omf_debug)
