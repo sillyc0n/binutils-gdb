@@ -1096,6 +1096,16 @@ i386omf_read_modend(bfd* abfd, bfd_byte const* p, bfd_size_type reclen,
   tdata->has_start_address = has_start;
   tdata->start_addr.has_start = false;
 
+  /* §3.4: PASS(2) boundary marker. A module with a start address must not
+     have seen a Link Pass Separator COMENT (class 0xA2) earlier in the
+     record stream. This constraint enforces that a module with a start
+     address is a main module (bit7=1) and not an appendable pass. */
+  if (has_start && tdata->pass_separator_seen) {
+    (*_bfd_error_handler)("MODEND start address in module with Link Pass Separator");
+    bfd_set_error(bfd_error_wrong_format);
+    return false;
+  }
+
   if (module_type & OMF_MODEND_RESERVED_MASK)
   {
     if (omf_debug) fprintf(stderr, "MODEND Module Type 0x%02x has non-standard bits set.\n",
@@ -2555,19 +2565,13 @@ i386omf_read_fixupp(bfd *abfd, bfd_byte const *p, bfd_size_type reclen, int is_3
             strtab_add(tdata->last_leidata->relocs, target_relent);
 
             /* Emit the WRTSEG marker reloc for any FRAME method that
-               still needs to express a separate frame relationship.
-               F4 needs no marker (frame is implicit LEIDATA context).
-               The same-segment case above already opted out by leaving
-               target_relent->symbol absolute; check that directly rather
-               than re-deriving frame/target equality, since it is the
-               exact condition the optimization created.
-               F5 against a target whose symbol is NULL (e.g. a GRPDEF
-               target, for which frame derivation isn't implemented)
-               has no usable frame symbol either — skip the marker
-               rather than emit one with a NULL symbol, matching the
-               original F5 behavior.  */
+               expresses a separate frame relationship.  F4 needs no
+               marker (frame is implicit LEIDATA context).  F5 against
+               a target whose symbol is NULL (e.g. a GRPDEF target, for
+               which frame derivation isn't implemented) has no usable
+               frame symbol — skip the marker rather than emit one
+               with a NULL symbol, matching the original F5 behavior.  */
             if (frame_method != OMF_FIXUPP_FRAME_LEIDATA
-                && target_relent->symbol != bfd_abs_section_ptr->symbol
                 && !(frame_method == OMF_FIXUPP_FRAME_TARGET && frame_sym == NULL))
             {
                 frame_relent = bfd_alloc(abfd, sizeof(*frame_relent));
