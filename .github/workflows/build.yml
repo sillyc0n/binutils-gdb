@@ -24,7 +24,7 @@ jobs:
     - name: Setup build environment
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential libgmp-dev libmpfr-dev
+        sudo apt-get install -y build-essential dejagnu libgmp-dev libmpfr-dev
 
     - name: Configure
       run: |
@@ -37,28 +37,16 @@ jobs:
       run: |
         cd build
         make CFLAGS="-g -Wno-unused-but-set-variable -Wno-unused-function" CXXFLAGS="-Wno-error -Wno-deprecated-declarations" || exit 1
-        make install || exit 1
 
     - name: Test OMF objects
       run: |
-        set -e
-        mkdir -p /tmp/omf_test
-        build/binutils/testsuite/gentestomf /tmp/omf_test
-        for f in basic section_offsets symbols fixups_simple fixups_threads fixups_all; do
-          echo "--- $f ---"
-          build/binutils/objdump -x "/tmp/omf_test/$f.o" | head -3
-          build/binutils/objdump -x "/tmp/omf_test/$f.o" | grep -q "file format i386omf" || exit 1
-        done
-        for f in error_no_leidata error_undefined_thread error_bad_location error_f3_frame error_comdef_bad_type; do
-          echo "--- $f ---"
-          build/binutils/objdump -x "/tmp/omf_test/$f.o" 2>&1 | grep -q "file format not recognized" || exit 1
-        done
-        echo "--- comdef ---"
-        build/binutils/objdump -x "/tmp/omf_test/comdef.o" | head -3
-        build/binutils/objdump -x "/tmp/omf_test/comdef.o" | grep -q "file format i386omf" || exit 1
-        build/binutils/objdump -x "/tmp/omf_test/comdef.o" | grep -q "_var" || exit 1
-        build/binutils/objdump -x "/tmp/omf_test/comdef.o" | grep -q "_var3" || exit 1
-        echo "All OMF tests passed"        
+        cd build
+        make check-binutils RUNTESTFLAGS="omf.exp" || exit 1
+
+    - name: Install
+      run: |
+        cd build
+        make install || exit 1
 
     - name: Package
       run: |
