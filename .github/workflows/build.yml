@@ -48,10 +48,22 @@ jobs:
         cd build
         make install || exit 1
 
+    - name: Write snapshot version file
+      run: |
+        cat > $INSTALL_DIR/bin/.omf-snapshot-version <<EOF
+        build_id: ${{ github.run_id }}
+        commit: ${{ github.sha }}
+        ref: ${{ github.ref_name }}
+        date: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+        EOF
+
     - name: Package
       run: |
         set -e
-        tar -czvf ${{ env.OMFTOOLS_ARTIFACT }} --transform='s|nm|omf-nm|' --transform='s|objdump|omf-objdump|' -C $INSTALL_DIR/bin nm objdump
+        tar -czvf ${{ env.OMFTOOLS_ARTIFACT }} \
+          --transform='s|nm|omf-nm|' \
+          --transform='s|objdump|omf-objdump|' \
+          -C $INSTALL_DIR/bin nm objdump .omf-snapshot-version
         tar -czvf ${{ env.BINUTILS_ARTIFACT }} -C $INSTALL_DIR bin include lib share
         sha256sum ${{ env.OMFTOOLS_ARTIFACT }} > ${{ env.OMFTOOLS_ARTIFACT }}.sha256
         sha256sum ${{ env.BINUTILS_ARTIFACT }} > ${{ env.BINUTILS_ARTIFACT }}.sha256
