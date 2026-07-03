@@ -1097,6 +1097,794 @@ gen_error_f3_frame (const char *outdir)
 }
 
 /* ------------------------------------------------------------------ */
+/*  Additional FIXUPP coverage — FRAME/TARGET method variety            */
+/* ------------------------------------------------------------------ */
+
+/* fixups_frame_grpdef.o — F1 explicit GRPDEF frame, T0 SEGDEF target.  */
+static void
+gen_fixups_frame_grpdef (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "fixups_frame_grpdef");
+  ob_lnames (&ob, "_TEXT");
+  ob_lnames (&ob, "my_group");
+  ob_segdef (&ob, 1, 16, 5, 2, 1, 0, 0);       /* SEGDEF idx 1 */
+
+  int grp_segs[] = { 1 };
+  ob_grpdef (&ob, 2, grp_segs, 1);              /* GRPDEF idx 1 */
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 0, data, 16);
+
+  /* F1 (GRPDEF frame, idx=1), T0 (SEGDEF target, idx=1), segment-relative.  */
+  uint8_t fixup[32];
+  int fn = build_fixup (fixup, 1, 1, 0,
+			0x10,			/* F=0 Frame=1(GRPDEF) T=0 P=0 Targt=0 */
+			1, 1,			/* frame=GRPDEF1, target=SEGDEF1 */
+			0x100, 0);
+  ob_fixupp (&ob, 0, fixup, fn);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/fixups_frame_grpdef.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* fixups_frame_extdef.o — F2 explicit EXTDEF frame, T2 EXTDEF target.  */
+static void
+gen_fixups_frame_extdef (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "fixups_frame_extdef");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 1, 16, 5, 2, 1, 0, 0);
+
+  ob_extdef (&ob, "ext_frame", 0);   /* EXTDEF idx 1 */
+  ob_extdef (&ob, "ext_target", 0);  /* EXTDEF idx 2 */
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 0, data, 16);
+
+  /* F2 (EXTDEF frame, idx=1), T2 (EXTDEF target, idx=2).  */
+  uint8_t fixup[32];
+  int fn = build_fixup (fixup, 1, 0, 0,
+			0x22,			/* F=0 Frame=2(EXTDEF) T=0 P=0 Targt=2(EXTDEF) */
+			1, 2,
+			0, 0);
+  ob_fixupp (&ob, 0, fixup, fn);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/fixups_frame_extdef.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* fixups_target_grpdef.o — F0 SEGDEF frame, T1 GRPDEF target with disp.  */
+static void
+gen_fixups_target_grpdef (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "fixups_target_grpdef");
+  ob_lnames (&ob, "_TEXT");
+  ob_lnames (&ob, "my_group");
+  ob_segdef (&ob, 1, 16, 5, 2, 1, 0, 0);       /* SEGDEF idx 1 */
+
+  int grp_segs[] = { 1 };
+  ob_grpdef (&ob, 2, grp_segs, 1);              /* GRPDEF idx 1 */
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 0, data, 16);
+
+  /* F0 (SEGDEF frame, idx=1), T1 (GRPDEF target, idx=1), disp present.  */
+  uint8_t fixup[32];
+  int fn = build_fixup (fixup, 1, 1, 0,
+			0x01,			/* F=0 Frame=0 T=0 P=0 Targt=1(GRPDEF) */
+			1, 1,
+			0x40, 0);
+  ob_fixupp (&ob, 0, fixup, fn);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/fixups_target_grpdef.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* fixups_target_nodisp.o — F0 SEGDEF frame, T4 explicit SEGDEF target
+   (NODISP variant, not via thread) — no displacement field present.  */
+static void
+gen_fixups_target_nodisp (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "fixups_target_nodisp");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 1, 16, 5, 2, 1, 0, 0);
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 0, data, 16);
+
+  /* F0 T4: SEGDEF target, index present, no displacement (P=1).  */
+  uint8_t fixup[32];
+  int fn = build_fixup (fixup, 1, 0, 0,
+			0x04,			/* F=0 Frame=0 T=0 P=1 Targt=0 (T4) */
+			1, 1,
+			0, 0);
+  ob_fixupp (&ob, 0, fixup, fn);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/fixups_target_nodisp.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* fixups_thread_persist.o — THREAD defined in one FIXUPP record is
+   consumed by a FIXUP in a later, separate FIXUPP record (§7 item 9:
+   thread state persists across FIXUPP records within a module).  */
+static void
+gen_fixups_thread_persist (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "fixups_thread_persist");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 1, 32, 5, 2, 1, 0, 0);
+
+  uint8_t data0[16];
+  memset (data0, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 0, data0, 16);
+
+  /* FIXUPP #1: THREAD only — define FRAME thread slot 0 = F0(SEGDEF idx1).  */
+  {
+    uint8_t thd[8];
+    int tn = build_thread (thd, 1, 0, 0, 1);
+    ob_fixupp (&ob, 0, thd, tn);
+  }
+
+  /* Second LEDATA block — a new "current data record" context.  */
+  uint8_t data1[16];
+  memset (data1, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 16, data1, 16);
+
+  /* FIXUPP #2: FIXUP consuming the FRAME thread defined earlier.  */
+  {
+    uint8_t fixup[32];
+    int fn = build_fixup (fixup, 1, 0, 0,
+			  0x80,			/* F=1 (via thread 0) T=0 P=0 Targt=0 */
+			  -1, 1,
+			  0, 0);
+    ob_fixupp (&ob, 0, fixup, fn);
+  }
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/fixups_thread_persist.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* fixups_thread_redefine.o — a thread slot is defined, consumed by a
+   FIXUP, then redefined with a different method/index, then consumed
+   again — verifies the slot is overwritten rather than accumulated.  */
+static void
+gen_fixups_thread_redefine (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "fixups_thread_redefine");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 1, 32, 5, 2, 1, 0, 0);        /* SEGDEF idx 1 */
+
+  ob_extdef (&ob, "redef_target", 0);           /* EXTDEF idx 1 */
+
+  uint8_t data[32];
+  memset (data, 0x90, 32);
+  ob_ledata (&ob, 1, 1, 0, data, 32);
+
+  uint8_t subrecs[128];
+  int plen = 0;
+  uint8_t thd[8];
+  uint8_t fixup[32];
+  int fn;
+
+  /* Define FRAME thread slot 0 = F0 (SEGDEF idx 1).  */
+  int tn = build_thread (thd, 1, 0, 0, 1);
+  memcpy (subrecs + plen, thd, tn); plen += tn;
+
+  /* Consume it: F=1 (via thread 0), T0 target=SEGDEF1.  */
+  fn = build_fixup (fixup, 1, 0, 0,
+		    0x80, -1, 1, 0, 0);
+  memcpy (subrecs + plen, fixup, fn); plen += fn;
+
+  /* Redefine FRAME thread slot 0 = F2 (EXTDEF idx 1) — overwrite.  */
+  tn = build_thread (thd, 1, 2, 0, 1);
+  memcpy (subrecs + plen, thd, tn); plen += tn;
+
+  /* Consume the redefinition: F=1 (via thread 0, now EXTDEF), T0 target=SEGDEF1.  */
+  fn = build_fixup (fixup, 2, 0, 8,
+		    0x80, -1, 1, 0, 0);
+  memcpy (subrecs + plen, fixup, fn); plen += fn;
+
+  ob_fixupp (&ob, 0, subrecs, plen);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/fixups_thread_redefine.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* fixups_target_thread_explicit.o — TARGET thread method 3 (explicit
+   frame via thread), consumed by a FIXUP with T=1 (T3/T7 via thread).  */
+static void
+gen_fixups_target_thread_explicit (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "fixups_target_thread_explicit");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 1, 16, 5, 2, 1, 0, 0);
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 0, data, 16);
+
+  uint8_t subrecs[64];
+  int plen = 0;
+
+  /* TARGET thread slot 0, method=3 (explicit frame number, no index field).  */
+  uint8_t thd[8];
+  int tn = build_thread (thd, 0, 3, 0, -1);
+  memcpy (subrecs + plen, thd, tn); plen += tn;
+
+  /* FIXUP: F0 (SEGDEF frame idx=1), T=1 (via thread 0), P=0 → effective T3.  */
+  uint8_t fixup[32];
+  int fn = build_fixup (fixup, 1, 0, 0,
+			0x08,			/* F=0 Frame=0 T=1 P=0 Targt=0(unused; via thread) */
+			1, -1,
+			0, 0);
+  memcpy (subrecs + plen, fixup, fn); plen += fn;
+
+  ob_fixupp (&ob, 0, subrecs, plen);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/fixups_target_thread_explicit.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* fixups_wide_index.o — SEGDEF/FIXUP indices > 127, forcing the 2-byte
+   OMF index encoding on both the LEDATA segment index and the FIXUP's
+   frame/target indices.  Defines 130 SEGDEFs sharing LNAMES idx 1 (with
+   zero class/overlay, as in zero_indices.o) so the real segment used by
+   the fixup lands at index 130.  */
+static void
+gen_fixups_wide_index (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "fixups_wide_index");
+  ob_lnames (&ob, "_TEXT");
+
+  int i;
+  for (i = 0; i < 130; i++)
+    ob_segdef (&ob, 1, 16, 5, 2, 1, 0, 0);   /* SEGDEF idx 1..130 */
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 1, 130, 0, data, 16);      /* 2-byte segment index */
+
+  /* F0+T0, both frame and target index = 130 (2-byte OMF index form).  */
+  uint8_t fixup[32];
+  int fn = build_fixup (fixup, 1, 0, 0,
+			0x00, 130, 130, 0, 0);
+  ob_fixupp (&ob, 0, fixup, fn);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/fixups_wide_index.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* fixups_offset_hi.o — Data Record Offset > 255, forcing use of the
+   2-bit "offset_hi" field packed into the Locat byte alongside the
+   FIXUP flag/M/Location bits.  */
+static void
+gen_fixups_offset_hi (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "fixups_offset_hi");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 1, 512, 5, 2, 1, 0, 0);    /* segment big enough for a 400-byte LEDATA */
+
+  uint8_t data[400];
+  memset (data, 0x90, 400);
+  ob_ledata (&ob, 1, 1, 0, data, 400);
+
+  /* FIXUP at data_rec_offset=300 (> 255; exercises offset_hi bits).  */
+  uint8_t fixup[32];
+  int fn = build_fixup (fixup, 1, 0, 300,
+			0x00, 1, 1, 0, 0);
+  ob_fixupp (&ob, 0, fixup, fn);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/fixups_offset_hi.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* fixups_diffsegment.o — F0 frame and T0 target reference *different*
+   SEGDEFs.  Verifies the same-segment collapse (exercised implicitly by
+   fixups_simple.o, where frame==target) does NOT fire here, and the
+   WRTSEG marker + real target symbol are retained.  */
+static void
+gen_fixups_diffsegment (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "fixups_diffsegment");
+  ob_lnames (&ob, "_TEXT");
+  ob_lnames (&ob, "_DATA");
+  ob_segdef (&ob, 1, 16, 5, 2, 1, 0, 0);   /* SEGDEF idx 1: _TEXT */
+  ob_segdef (&ob, 1, 16, 5, 2, 2, 0, 0);   /* SEGDEF idx 2: _DATA */
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 0, data, 16);      /* LEDATA in _TEXT */
+
+  /* F0 (frame=_TEXT idx1), T0 (target=_DATA idx2) — different segments.  */
+  uint8_t fixup[32];
+  int fn = build_fixup (fixup, 1, 1, 0,
+			0x00, 1, 2, 0x10, 0);
+  ob_fixupp (&ob, 0, fixup, fn);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/fixups_diffsegment.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Additional FIXUPP coverage — negative/error paths                   */
+/* ------------------------------------------------------------------ */
+
+/* error_undefined_frame_segdef.o — F0 frame references a SEGDEF index
+   that was never defined.  */
+static void
+gen_error_undefined_frame_segdef (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "error_undefined_frame_segdef");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 1, 16, 5, 2, 1, 0, 0);
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 0, data, 16);
+
+  /* F0 frame index=99 (undefined), T0 target=1 (valid).  */
+  uint8_t fixup[32];
+  int fn = build_fixup (fixup, 1, 0, 0,
+			0x00, 99, 1, 0, 0);
+  ob_fixupp (&ob, 0, fixup, fn);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/error_undefined_frame_segdef.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* error_undefined_frame_grpdef.o — F1 frame references an undefined
+   GRPDEF index.  */
+static void
+gen_error_undefined_frame_grpdef (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "error_undefined_frame_grpdef");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 1, 16, 5, 2, 1, 0, 0);
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 0, data, 16);
+
+  /* F1 frame index=99 (no GRPDEF defined at all), T0 target=1.  */
+  uint8_t fixup[32];
+  int fn = build_fixup (fixup, 1, 0, 0,
+			0x10, 99, 1, 0, 0);
+  ob_fixupp (&ob, 0, fixup, fn);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/error_undefined_frame_grpdef.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* error_undefined_frame_extdef.o — F2 frame references an undefined
+   EXTDEF index.  */
+static void
+gen_error_undefined_frame_extdef (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "error_undefined_frame_extdef");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 1, 16, 5, 2, 1, 0, 0);
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 0, data, 16);
+
+  /* F2 frame index=99 (no EXTDEF defined at all), T0 target=1.  */
+  uint8_t fixup[32];
+  int fn = build_fixup (fixup, 1, 0, 0,
+			0x20, 99, 1, 0, 0);
+  ob_fixupp (&ob, 0, fixup, fn);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/error_undefined_frame_extdef.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* error_frame_f6_invalid.o — FIXUP with Frame method 6 (invalid; the
+   `default:` branch with no explicit index read).  */
+static void
+gen_error_frame_f6_invalid (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "error_frame_f6_invalid");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 1, 16, 5, 2, 1, 0, 0);
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 0, data, 16);
+
+  /* Frame=6 (F6, invalid — falls into default: case).  */
+  uint8_t fixup[32];
+  int fn = build_fixup (fixup, 1, 0, 0,
+			0x60,			/* F=0 Frame=6 T=0 P=0 Targt=0 */
+			0, 1, 0, 0);
+  ob_fixupp (&ob, 0, fixup, fn);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/error_frame_f6_invalid.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* error_target_phantom_segdef.o — T0 target references an undefined
+   SEGDEF index.  */
+static void
+gen_error_target_phantom_segdef (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "error_target_phantom_segdef");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 1, 16, 5, 2, 1, 0, 0);
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 0, data, 16);
+
+  /* F0 frame=1 (valid), T0 target=99 (undefined SEGDEF).  */
+  uint8_t fixup[32];
+  int fn = build_fixup (fixup, 1, 0, 0,
+			0x00, 1, 99, 0, 0);
+  ob_fixupp (&ob, 0, fixup, fn);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/error_target_phantom_segdef.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* error_target_phantom_grpdef.o — T1 target references an undefined
+   GRPDEF index.  */
+static void
+gen_error_target_phantom_grpdef (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "error_target_phantom_grpdef");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 1, 16, 5, 2, 1, 0, 0);
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 0, data, 16);
+
+  /* F0 frame=1 (valid), T1 target=99 (no GRPDEF defined at all).  */
+  uint8_t fixup[32];
+  int fn = build_fixup (fixup, 1, 0, 0,
+			0x01, 1, 99, 0, 0);
+  ob_fixupp (&ob, 0, fixup, fn);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/error_target_phantom_grpdef.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* error_target_phantom_extdef.o — T2 target references an undefined
+   EXTDEF index.  */
+static void
+gen_error_target_phantom_extdef (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "error_target_phantom_extdef");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 1, 16, 5, 2, 1, 0, 0);
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 0, data, 16);
+
+  /* F0 frame=1 (valid), T2 target=99 (no EXTDEF defined at all).  */
+  uint8_t fixup[32];
+  int fn = build_fixup (fixup, 1, 0, 0,
+			0x02, 1, 99, 0, 0);
+  ob_fixupp (&ob, 0, fixup, fn);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/error_target_phantom_extdef.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* error_reserved_location.o — FIXUP with location=7 (reserved, but
+   below the >=14 threshold — a distinct disjunct of the validation).  */
+static void
+gen_error_reserved_location (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "error_reserved_location");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 1, 16, 5, 2, 1, 0, 0);
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 0, data, 16);
+
+  /* FIXUP with location=7 (invalid, reserved).  */
+  uint8_t fixup[32];
+  int fn = build_fixup (fixup, 7, 0, 0,
+			0x00, 1, 1, 0, 0);
+  ob_fixupp (&ob, 0, fixup, fn);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/error_reserved_location.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* error_truncated_displacement.o — P=0 (displacement present) but the
+   subrecord is truncated before the displacement bytes.  */
+static void
+gen_error_truncated_displacement (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "error_truncated_displacement");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 1, 16, 5, 2, 1, 0, 0);
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 0, data, 16);
+
+  /* Build a normal P=0 fixup, then drop the last byte of the 16-bit
+     displacement before writing the FIXUPP record.  */
+  uint8_t fixup[32];
+  int fn = build_fixup (fixup, 1, 0, 0,
+			0x00, 1, 1, 0x1234, 0);
+  ob_fixupp (&ob, 0, fixup, fn - 1);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/error_truncated_displacement.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* error_frame_thread_masked.o — FRAME thread reference where the raw
+   Frame field is >= 4 (e.g. 6), exercising the "Frame & 3" masking
+   down to thread slot 2, which is never defined.  Distinct from
+   error_undefined_thread.o, which always uses raw Frame field 0.  */
+static void
+gen_error_frame_thread_masked (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "error_frame_thread_masked");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 1, 16, 5, 2, 1, 0, 0);
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 0, data, 16);
+
+  /* F=1 (via thread), raw Frame field=6 → masked thread slot = 6&3 = 2.
+     No THREAD subrecord defines slot 2 (FRAME or TARGET).  */
+  uint8_t fixup[32];
+  int fn = build_fixup (fixup, 1, 0, 0,
+			0xE0,			/* F=1 Frame=6 T=0 P=0 Targt=0 */
+			-1, 1, 0, 0);
+  ob_fixupp (&ob, 0, fixup, fn);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/error_frame_thread_masked.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* error_target_thread_undefined.o — TARGET thread reference (T=1) to a
+   slot never defined by any THREAD subrecord.  Distinct from
+   error_undefined_thread.o, which exercises the FRAME-thread path.  */
+static void
+gen_error_target_thread_undefined (const char *outdir)
+{
+  struct omf_buf ob;
+  ob.len = 0;
+
+  ob_theadr (&ob, "error_target_thread_undefined");
+  ob_lnames (&ob, "_TEXT");
+  ob_segdef (&ob, 1, 16, 5, 2, 1, 0, 0);
+
+  uint8_t data[16];
+  memset (data, 0x90, 16);
+  ob_ledata (&ob, 1, 1, 0, data, 16);
+
+  /* F0 frame=1 (valid), T=1 (via thread), target thread slot=2 (undefined).  */
+  uint8_t fixup[32];
+  int fn = build_fixup (fixup, 1, 0, 0,
+			0x0A,			/* F=0 Frame=0 T=1 P=0 Targt=2 (thread slot) */
+			1, -1, 0, 0);
+  ob_fixupp (&ob, 0, fixup, fn);
+
+  ob_modend (&ob, 0, 0);
+
+  char path[256];
+  snprintf (path, sizeof path, "%s/error_target_thread_undefined.o", outdir);
+  FILE *f = fopen (path, "wb");
+  if (!f) { perror (path); exit (IO_ERROR); }
+  fwrite (ob.data, 1, ob.len, f);
+  fclose (f);
+  printf ("  wrote %s (%d bytes)\n", path, ob.len);
+}
+
+/* ------------------------------------------------------------------ */
 /*  COMDEF test objects                                                 */
 /* ------------------------------------------------------------------ */
 
@@ -1908,11 +2696,8 @@ main (int argc, char **argv)
 
   outdir = argv[1];
 
-  if (chdir (outdir) != 0)
-    {
-      perror (outdir);
-      return IO_ERROR;
-    }
+  /* The gen_* functions use outdir as a path prefix, so leave
+     outdir relative to cwd.  Do NOT chdir here.  */
 
   printf ("gentestomf: generating OMF test objects in %s\n", outdir);
 
@@ -1929,6 +2714,30 @@ main (int argc, char **argv)
   gen_error_undefined_thread (outdir);
   gen_error_bad_location (outdir);
   gen_error_f3_frame (outdir);
+
+  gen_fixups_frame_grpdef (outdir);
+  gen_fixups_frame_extdef (outdir);
+  gen_fixups_target_grpdef (outdir);
+  gen_fixups_target_nodisp (outdir);
+  gen_fixups_thread_persist (outdir);
+  gen_fixups_thread_redefine (outdir);
+  gen_fixups_target_thread_explicit (outdir);
+  gen_fixups_wide_index (outdir);
+  gen_fixups_offset_hi (outdir);
+  gen_fixups_diffsegment (outdir);
+
+  gen_error_undefined_frame_segdef (outdir);
+  gen_error_undefined_frame_grpdef (outdir);
+  gen_error_undefined_frame_extdef (outdir);
+  gen_error_frame_f6_invalid (outdir);
+  gen_error_target_phantom_segdef (outdir);
+  gen_error_target_phantom_grpdef (outdir);
+  gen_error_target_phantom_extdef (outdir);
+  gen_error_reserved_location (outdir);
+  gen_error_truncated_displacement (outdir);
+  gen_error_frame_thread_masked (outdir);
+  gen_error_target_thread_undefined (outdir);
+
   gen_comdef (outdir);
   gen_comdat (outdir);
   gen_comdat_iterated (outdir);

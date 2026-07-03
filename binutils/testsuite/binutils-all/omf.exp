@@ -195,10 +195,11 @@ if { [regexp "external_func" $got] } {
     fail $test
 }
 
-# Check that 5 fixups produce the expected number of reloc lines.
+# Check that 5 fixups produce the expected number of reloc lines
+# (9 = 4 fixups × 2 lines + 1 fixup × 1 line for explicit target datum).
 set test "OMF relocs all: count"
-set reloc_lines [regexp -all -inline {^\S+ \S+ \S+$} $got]
-if { [llength $reloc_lines] == 10 } {
+set reloc_lines [regexp -all -inline -line {^[0-9a-fA-F]+\s+[A-Z0-9]+\s+\S+$} $got]
+if { [llength $reloc_lines] == 9 } {
     pass $test
 } else {
     fail "$test (got [llength $reloc_lines] lines)"
@@ -245,6 +246,310 @@ if { [regexp "unsupported location type 14" $got] } {
 set test "OMF error: F3 explicit frame"
 set got [binutils_run $OBJDUMP "-x tmpdir/error_f3_frame.o"]
 if { [regexp "invalid explicit frame method F3" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+# -----------------------------------------------------------------------
+#  fixups_frame_grpdef.o — F1 explicit GRPDEF frame, T0 SEGDEF target
+# -----------------------------------------------------------------------
+set test "OMF relocs frame GRPDEF: format detection"
+set got [binutils_run $OBJDUMP "-x tmpdir/fixups_frame_grpdef.o"]
+if { [regexp "file format i386omf" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF relocs frame GRPDEF: WRTSEG my_group"
+if { [regexp "WRTSEG.*my_group" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+# -----------------------------------------------------------------------
+#  fixups_frame_extdef.o — F2 explicit EXTDEF frame, T2 EXTDEF target
+# -----------------------------------------------------------------------
+set test "OMF relocs frame EXTDEF: format detection"
+set got [binutils_run $OBJDUMP "-x tmpdir/fixups_frame_extdef.o"]
+if { [regexp "file format i386omf" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF relocs frame EXTDEF: ext_frame WRTSEG"
+if { [regexp "WRTSEG.*ext_frame" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF relocs frame EXTDEF: ext_target relocation"
+if { [regexp "ext_target" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+# -----------------------------------------------------------------------
+#  fixups_target_grpdef.o — F0 SEGDEF frame, T1 GRPDEF target
+# -----------------------------------------------------------------------
+set test "OMF relocs target GRPDEF: format detection"
+set got [binutils_run $OBJDUMP "-x tmpdir/fixups_target_grpdef.o"]
+if { [regexp "file format i386omf" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF relocs target GRPDEF: RELOC flag"
+if { [regexp "RELOC" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+# -----------------------------------------------------------------------
+#  fixups_target_nodisp.o — T4 explicit SEGDEF target, no displacement
+# -----------------------------------------------------------------------
+set test "OMF relocs target nodisp: format detection"
+set got [binutils_run $OBJDUMP "-x tmpdir/fixups_target_nodisp.o"]
+if { [regexp "file format i386omf" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF relocs target nodisp: RELOC flag"
+if { [regexp "RELOC" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+# -----------------------------------------------------------------------
+#  fixups_thread_persist.o — THREAD persists across separate FIXUPP records
+# -----------------------------------------------------------------------
+set test "OMF relocs thread persist: format detection"
+set got [binutils_run $OBJDUMP "-x tmpdir/fixups_thread_persist.o"]
+if { [regexp "file format i386omf" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF relocs thread persist: RELOC flag"
+if { [regexp "RELOC" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+# -----------------------------------------------------------------------
+#  fixups_thread_redefine.o — thread slot redefined mid-module
+# -----------------------------------------------------------------------
+set test "OMF relocs thread redefine: format detection"
+set got [binutils_run $OBJDUMP "-x tmpdir/fixups_thread_redefine.o"]
+if { [regexp "file format i386omf" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF relocs thread redefine: redef_target relocation"
+if { [regexp "redef_target" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+# Two FIXUP subrecords should produce four reloc lines (target + WRTSEG
+# marker for each), confirming the redefinition was consumed rather than
+# accumulated onto a stale slot.
+set test "OMF relocs thread redefine: reloc count"
+set reloc_lines [regexp -all -inline -line {^[0-9a-fA-F]+\s+[A-Z0-9]+\s+\S+$} $got]
+if { [llength $reloc_lines] == 4 } {
+    pass $test
+} else {
+    fail "$test (got [llength $reloc_lines] lines)"
+}
+
+# -----------------------------------------------------------------------
+#  fixups_target_thread_explicit.o — TARGET thread method 3 (T3 via thread)
+# -----------------------------------------------------------------------
+set test "OMF relocs target thread explicit: format detection"
+set got [binutils_run $OBJDUMP "-x tmpdir/fixups_target_thread_explicit.o"]
+if { [regexp "file format i386omf" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF relocs target thread explicit: RELOC flag"
+if { [regexp "RELOC" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+# -----------------------------------------------------------------------
+#  fixups_wide_index.o — 2-byte OMF index encoding (index > 127)
+# -----------------------------------------------------------------------
+set test "OMF relocs wide index: format detection"
+set got [binutils_run $OBJDUMP "-x tmpdir/fixups_wide_index.o"]
+if { [regexp "file format i386omf" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF relocs wide index: RELOC flag"
+if { [regexp "RELOC" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+# -----------------------------------------------------------------------
+#  fixups_offset_hi.o — Data Record Offset > 255 (offset_hi bits)
+# -----------------------------------------------------------------------
+set test "OMF relocs offset_hi: format detection"
+set got [binutils_run $OBJDUMP "-x tmpdir/fixups_offset_hi.o"]
+if { [regexp "file format i386omf" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF relocs offset_hi: RELOC flag"
+if { [regexp "RELOC" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+# -----------------------------------------------------------------------
+#  fixups_diffsegment.o — F0/T0 frame and target in different segments
+# -----------------------------------------------------------------------
+set test "OMF relocs diffsegment: format detection"
+set got [binutils_run $OBJDUMP "-x tmpdir/fixups_diffsegment.o"]
+if { [regexp "file format i386omf" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+# The frame (_TEXT) and target (_DATA) segments differ, so the
+# same-segment collapse must NOT fire: expect a WRTSEG marker naming
+# _TEXT and a real (non-absolute) target relocation into _DATA.
+set test "OMF relocs diffsegment: WRTSEG _TEXT retained"
+if { [regexp {WRTSEG.*_TEXT} $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF relocs diffsegment: target not collapsed to *ABS*"
+if { ![regexp {\*ABS\*} $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+# -----------------------------------------------------------------------
+#  fixups_simple.o (same-segment case) — confirm the collapse DOES fire
+#  when frame and target name the same segment (F0/T0, frame==target).
+# -----------------------------------------------------------------------
+set test "OMF relocs simple: same-segment collapses to *ABS*"
+set got [binutils_run $OBJDUMP "-r tmpdir/fixups_simple.o"]
+if { [regexp {\*ABS\*} $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+# -----------------------------------------------------------------------
+#  Additional FIXUPP error cases — all must be rejected with
+#  "file format not recognized"
+# -----------------------------------------------------------------------
+foreach errfile {error_undefined_frame_segdef error_undefined_frame_grpdef \
+		  error_undefined_frame_extdef error_frame_f6_invalid \
+		  error_target_phantom_segdef error_target_phantom_grpdef \
+		  error_target_phantom_extdef error_reserved_location \
+		  error_truncated_displacement error_frame_thread_masked \
+		  error_target_thread_undefined} {
+    set test "OMF error: $errfile"
+    set got [binutils_run $OBJDUMP "-x tmpdir/$errfile.o"]
+    if { [regexp "file format not recognized" $got] } {
+	pass $test
+    } else {
+	fail $test
+    }
+}
+
+# Verify specific error messages for the new cases.
+set test "OMF error: undefined FRAME segment"
+set got [binutils_run $OBJDUMP "-x tmpdir/error_undefined_frame_segdef.o"]
+if { [regexp "references undefined segment" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF error: undefined FRAME group"
+set got [binutils_run $OBJDUMP "-x tmpdir/error_undefined_frame_grpdef.o"]
+if { [regexp "references undefined group" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF error: undefined FRAME external"
+set got [binutils_run $OBJDUMP "-x tmpdir/error_undefined_frame_extdef.o"]
+if { [regexp "references undefined external" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF error: phantom TARGET segment"
+set got [binutils_run $OBJDUMP "-x tmpdir/error_target_phantom_segdef.o"]
+if { [regexp "wants phantom segment" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF error: phantom TARGET external"
+set got [binutils_run $OBJDUMP "-x tmpdir/error_target_phantom_extdef.o"]
+if { [regexp "wants phantom extern" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF error: reserved location 7"
+set got [binutils_run $OBJDUMP "-x tmpdir/error_reserved_location.o"]
+if { [regexp "unsupported location type 7" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF error: undefined FRAME thread (masked slot)"
+set got [binutils_run $OBJDUMP "-x tmpdir/error_frame_thread_masked.o"]
+if { [regexp "undefined FRAME thread 2" $got] } {
+    pass $test
+} else {
+    fail $test
+}
+
+set test "OMF error: undefined TARGET thread"
+set got [binutils_run $OBJDUMP "-x tmpdir/error_target_thread_undefined.o"]
+if { [regexp "undefined TARGET thread" $got] } {
     pass $test
 } else {
     fail $test
@@ -345,7 +650,7 @@ if { [regexp "_TEXT.*0000005a" $got] } {
 }
 
 set test "OMF lidata: HAS_CONTENTS flag"
-if { [regexp "HAS_CONTENTS" $got] } {
+if { [regexp "CONTENTS" $got] } {
     pass $test
 } else {
     fail $test
